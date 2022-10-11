@@ -1,0 +1,1 @@
+python3 train.py -c configs/mura.json -mn pennet -m square -s 512

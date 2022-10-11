@@ -1,0 +1,45 @@
+{
+    "seed": 2022,
+    "save_dir": "release_model/",
+    "data_loader": {
+        "name": "mura_d23_8k", 
+        "train_data_root": "E:/CSE/AI/Mura/mura_data/d23/train/normal_8k",
+        "train_data_max": -1,
+        "test_data_root": "",
+        "test_data_max": -1,
+        "test_data_root_normal": "E:/CSE/AI/Mura/mura_data/d23/test/normal_8k",
+        "test_data_root_smura": "E:/CSE/AI/Mura/mura_data/d23/test/smura_8k",
+        "mask": "square",
+        "extend": 5,
+        "w": 512,
+        "h": 512,
+        "color": "RGB",
+        "crop_size": 64, 
+        "rand_crop_num": 64,
+        "slid_crop_stride": 32
+    },
+    "losses": {
+        "gan_type": "hinge",
+        "hole_weight": 6,
+        "valid_weight": 1,
+        "pyramid_weight": 0.5,
+        "adversarial_weight": 0.1
+    },
+    "trainer": {
+        "type": "Adam",
+        "lr": 1e-04,
+        "d2glr": 1, 
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "verbosity": 2,
+        "save_freq": 1,
+        "epochs" : 100,
+        "batch_size": 1,
+        "num_workers": 4
+    },
+    "supervised": {
+        "focalloss_alpha": 0.75, 
+        "focalloss_gamma": 2.0,
+        "img_size": 256
+    }
+}
