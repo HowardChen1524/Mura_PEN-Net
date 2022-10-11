@@ -2,17 +2,17 @@
 # python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t normal
 # python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/
 # python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -n
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -n
+# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
+# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
 
 # windows
 python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp E:/CSE/AI/Mura/mura_data/typecplus/ 
 python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp E:/CSE/AI/Mura/mura_data/typecplus/
-python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp E:/CSE/AI/Mura/mura_data/typecplus/ -n
-python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp E:/CSE/AI/Mura/mura_data/typecplus/ -n
+python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp E:/CSE/AI/Mura/mura_data/typecplus/ -pn
+python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp E:/CSE/AI/Mura/mura_data/typecplus/ -pn
 
-python test_with_supervised.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t normal -n
-python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t normal
+python test_with_supervised.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t normal -mm
+python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t normal -mm
 # MSE
 # 7.9499725e-05
 # 6.252859e-05

@@ -56,8 +56,8 @@ parser.add_argument("-as", "--anomaly_score", type=str, default='MSE', help='MSE
 parser.add_argument("-np", "--normal_path", type=str, default=None)
 parser.add_argument("-sp", "--smura_path", type=str, default=None)
 parser.add_argument("-t", "--test_type", type=str, default='normal', help='normal | position')
-parser.add_argument("-n", "--normalized", action='store_true', help='Use for typecplus')
-
+parser.add_argument("-pn", "--pos_normalized", action='store_true', help='Use for typecplus')
+parser.add_argument("-mm", "--minmax", action='store_true', help='Use for combine supervised')
 args = parser.parse_args()
 
 # world_size : GPU num -> 1
@@ -236,10 +236,10 @@ def main_worker(gpu, ngpus_per_node, config):
   set_seed(config['seed'])
 
   if config['test_type'] == 'normal':
-    result_dict = defaultdict(list)
-    result_dict['all'] = defaultdict(list)
-    result_dict['max'] = defaultdict(list)
-    result_dict['mean'] = defaultdict(list)
+    res_unsup = defaultdict(list)
+    res_unsup['all'] = defaultdict(list)
+    res_unsup['max'] = defaultdict(list)
+    res_unsup['mean'] = defaultdict(list)
 
     dataset_type_list = [config['data_loader']['test_data_root_normal'], config['data_loader']['test_data_root_smura']]
     for idx, data_path in enumerate(dataset_type_list):
@@ -250,26 +250,27 @@ def main_worker(gpu, ngpus_per_node, config):
       big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean = tester.test() # max mean 
       
       if idx == 0:
-        result_dict['all']['n'] = big_imgs_scores.copy() # all 小圖
-        result_dict['max']['n'] = big_imgs_scores_max.copy() # max
-        result_dict['mean']['n'] = big_imgs_scores_mean.copy() # mean
+        res_unsup['all']['n'] = big_imgs_scores.copy() # all 小圖
+        res_unsup['max']['n'] = big_imgs_scores_max.copy() # max
+        res_unsup['mean']['n'] = big_imgs_scores_mean.copy() # mean
       elif idx == 1:
-        result_dict['all']['s'] = big_imgs_scores.copy() # all 小圖
-        result_dict['max']['s'] = big_imgs_scores_max.copy() # max
-        result_dict['mean']['s'] = big_imgs_scores_mean.copy() # mean
+        res_unsup['all']['s'] = big_imgs_scores.copy() # all 小圖
+        res_unsup['max']['s'] = big_imgs_scores_max.copy() # max
+        res_unsup['mean']['s'] = big_imgs_scores_mean.copy() # mean
       else:
         raise
+    
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
-    show_and_save_result(result_dict, config['result_path'], result_name)
+    show_and_save_result(res_unsup, config['result_path'], result_name)
   elif config['test_type'] == 'position':
     df = pd.read_csv(r'./Mura_type_c_plus.csv')
     print(f"Mura 最大 :\n{df.iloc[(df['h']+df['w']).argmax()][['fn','w','h']]}")
     print(f"Mura 最小 :\n{df.iloc[(df['h']+df['w']).argmin()][['fn','w','h']]}")
 
-    result_dict = defaultdict(list)
-    result_dict['all'] = defaultdict(list)
+    res_unsup = defaultdict(list)
+    res_unsup['all'] = defaultdict(list)
 
-    if config['normalized']:
+    if config['pos_normalized']:
       # for idx, data_path in enumerate([config['data_loader']['test_data_root_normal']]):
       #   config['data_loader']['test_data_root'] = data_path
       #   print("Start to compute normal mean and std")
@@ -293,17 +294,17 @@ def main_worker(gpu, ngpus_per_node, config):
 
       tester = Tester(config) # Default debug = False
 
-      if config['normalized']:
+      if config['pos_normalized']:
         big_imgs_scores = tester.test_position(df, normal_mean, normal_std)
         print(f"Mean: {big_imgs_scores.mean()}")
         print(f"std: {big_imgs_scores.std()}")
       else:
         big_imgs_scores = tester.test_position(df)
 
-      result_dict['all']['s'] = big_imgs_scores.copy() # all 小圖
+      res_unsup['all']['s'] = big_imgs_scores.copy() # all 小圖
     
-    print(f"Smura mean: {result_dict['all']['s'].mean()}")
-    print(f"Smura std: {result_dict['all']['s'].std()}")
+    print(f"Smura mean: {res_unsup['all']['s'].mean()}")
+    print(f"Smura std: {res_unsup['all']['s'].std()}")
     
 
 if __name__ == '__main__':
@@ -325,8 +326,8 @@ if __name__ == '__main__':
   config['model_epoch'] = args.model_epoch
   config['anomaly_score'] = args.anomaly_score
   config['test_type'] = args.test_type
-  config['normalized'] = args.normalized
-
+  config['pos_normalized'] = args.pos_normalized
+  config['minmax'] = args.minmax
 
   gpu_device = 0
   # print('using {} GPUs for testing ... '.format(ngpus_per_node))

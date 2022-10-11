@@ -62,8 +62,8 @@ parser.add_argument("-as", "--anomaly_score", type=str, default='MSE', help='MSE
 parser.add_argument("-np", "--normal_path", type=str, default=None)
 parser.add_argument("-sp", "--smura_path", type=str, default=None)
 parser.add_argument("-t", "--test_type", type=str, default='normal', help='normal | position')
-parser.add_argument("-n", "--normalized", action='store_true', help='Use for typecplus')
-
+parser.add_argument("-pn", "--pos_normalized", action='store_true', help='Use for typecplus')
+parser.add_argument("-mm", "--minmax", action='store_true', help='Use for combine supervised')
 args = parser.parse_args()
 
 # supervised
@@ -243,7 +243,9 @@ def roc(labels, scores, path, name):
     plot_roc_curve(fpr, tpr, path, name)
     
     return roc_auc, optimal_th
+
 def plot_roc_curve(fpr, tpr, path, name):
+    plt.clf()
     plt.plot(fpr, tpr, color='orange', label='ROC')
     plt.plot([0, 1], [0, 1], color='darkblue', linestyle='--')
     plt.xlabel('False Positive Rate')
@@ -252,105 +254,61 @@ def plot_roc_curve(fpr, tpr, path, name):
     plt.legend()
     plt.savefig(f"{path}/{name}_roc.png")
     plt.clf()
+
 def plot_distance_distribution(n_scores, s_scores, path, name):
+    plt.clf()
     # bins = np.linspace(0.000008,0.00005) # Mask MSE
     plt.hist(s_scores, bins=50, alpha=0.5, density=True, label="smura")
     plt.hist(n_scores, bins=50, alpha=0.5, density=True, label="normal")
-    plt.xlabel('Anomaly Score')
+    if "_sup" in name:
+      plt.xlabel('Confidence')
+    else:
+      plt.xlabel('Anomaly Score')
     plt.title('Score Distribution')
     plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}_dist_mean.png")
+    plt.savefig(f"{path}/{name}_dist.png")
     plt.clf()
-def plot_distance_scatter(n_max, s_max, n_mean, s_mean, path, name):
-    # normal
-    x1 = n_max
-    y1 = n_mean
-    # smura
-    x2 = s_max
-    y2 = s_mean
-    # 設定座標軸
-    # normal
-    plt.xlabel("max")
-    plt.ylabel("mean")
-    plt.title('scatter')
-    plt.scatter(x1, y1, s=5, c ="blue", alpha=0.3, label="normal")
-    plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}_normal_scatter.png")
-    plt.clf()
-    # smura
-    plt.xlabel("max")
-    plt.ylabel("mean")
-    plt.title('scatter')
-    plt.scatter(x2, y2, s=5, c ="red", alpha=0.3, label="smura")
-    plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}_smura_scatter.png")
-    plt.clf()
-    # all
-    plt.xlabel("max")
-    plt.ylabel("mean")
-    plt.title('scatter')
-    plt.scatter(x1, y1, s=5, c ="blue", alpha=0.3, label="normal")
-    plt.scatter(x2, y2, s=5, c ="red", alpha=0.3, label="smura")
-    plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}__scatter.png")
-    plt.clf()
-def prediction(labels, scores, path, name):
-    result_msg = ''
-    pred_labels = [] 
-    roc_auc, optimal_th = roc(labels, scores, path, name)
-    for score in scores:
-        if score >= optimal_th:
-            pred_labels.append(1)
-        else:
-            pred_labels.append(0)
-    
-    cm = confusion_matrix(labels, pred_labels)
-    TP = cm[1][1]
-    FP = cm[0][1]
-    FN = cm[1][0]
-    TN = cm[0][0]
-    DATA_NUM = TN + FP + FN + TP
-    result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
-    result_msg += f"\nAUC: {roc_auc}\n"
-    result_msg += f"Threshold (highest TPR-FPR): {optimal_th}\n"
-    result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
-    result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
-    result_msg += f"TNR: {TN/(FP+TN)}\n"
-    result_msg += f"Precision (PPV): {TP/(TP+FP)}\n"
-    result_msg += f"NPV: {TN/(FN+TN)}\n"
-    result_msg += f"False Alarm Rate (FPR): {FP/(FP+TN)}\n"
-    result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
-    result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
-    return result_msg
-def max_meam_prediction(labels, max_scores, mean_scores, path, name):
-    result_msg = ''
+
+def sup_unsup_prediction(labels, all_conf_sup, all_score_unsup, path, name):
+    # result_msg = ''
     # score = a*max + b*mean
-    best_a, best_b = 0, 0
-    best_auc = 0
-    for ten_a in range(0, 10, 1):
-        a = ten_a/10.0
-        for ten_b in range(0, 10, 1):
-            b = ten_b/10.0
+    # best_a, best_b = 0, 0
+    # best_auc = 0
+    # for ten_a in range(0, 10, 1):
+    #     a = ten_a/10.0
+    #     for ten_b in range(0, 10, 1):
+    #         b = ten_b/10.0
             
-            scores = a*max_scores + b*mean_scores
-            fpr, tpr, th = roc_curve(labels, scores)
-            current_auc = auc(fpr, tpr)
-            if current_auc >= best_auc:
-                best_auc = current_auc
-                best_a = a
-                best_b = b         
+    #         scores = a*max_scores + b*mean_scores
+    #         fpr, tpr, th = roc_curve(labels, scores)
+    #         current_auc = auc(fpr, tpr)
+    #         if current_auc >= best_auc:
+    #             best_auc = current_auc
+    #             best_a = a
+    #             best_b = b         
 
-    result_msg += f"Param a: {best_a}, b: {best_b}\n"
+    # result_msg += f"Param a: {best_a}, b: {best_b}\n"
 
-    best_scores = best_a*max_scores + best_b*mean_scores
-    pred_labels = [] 
-    roc_auc, optimal_th = roc(labels, best_scores, path, name)
-    for score in best_scores:
-        if score >= optimal_th:
-            pred_labels.append(1)
-        else:
-            pred_labels.append(0)
+    # best_scores = best_a*max_scores + best_b*mean_scores
+    # pred_labels = [] 
+    # roc_auc, optimal_th = roc(labels, best_scores, path, name)
+    # for score in best_scores:
+    #     if score >= optimal_th:
+    #         pred_labels.append(1)
+    #     else:
+    #         pred_labels.append(0)
     
+    # y = -1.333x + 0.8
+    # 1.333x+y-0.8 = 0
+    best_scores = 1.333*all_score_unsup + all_conf_sup - 0.8
+    pred_labels = [] 
+
+    for score in best_scores:
+            if score >= 0:
+                pred_labels.append(1)
+            else:
+                pred_labels.append(0)
+
     cm = confusion_matrix(labels, pred_labels)
     TP = cm[1][1]
     FP = cm[0][1]
@@ -358,8 +316,8 @@ def max_meam_prediction(labels, max_scores, mean_scores, path, name):
     TN = cm[0][0]
     DATA_NUM = TN + FP + FN + TP
     result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
-    result_msg += f"\nAUC: {roc_auc}\n"
-    result_msg += f"Threshold (highest TPR-FPR): {optimal_th}\n"
+    # result_msg += f"\nAUC: {roc_auc}\n"
+    # result_msg += f"Threshold (highest TPR-FPR): {optimal_th}\n"
     result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
     result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
     result_msg += f"TNR: {TN/(FP+TN)}\n"
@@ -369,31 +327,23 @@ def max_meam_prediction(labels, max_scores, mean_scores, path, name):
     result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
     result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
     return result_msg
-def show_and_save_result(result, path, name):
-  all_max_anomaly_score = np.concatenate([result['max']['n'], result['max']['s']])
-  all_mean_anomaly_score = np.concatenate([result['mean']['n'], result['mean']['s']])
-  true_label = [0]*result['mean']['n'].shape[0]+[1]*result['mean']['s'].shape[0]
-  
-  plot_distance_distribution(result['mean']['n'], result['mean']['s'], path, name)
-  plot_distance_scatter(result['max']['n'], result['max']['s'], 
-                          result['mean']['n'], result['mean']['s'], path, name)
 
+def show_and_save_result(conf_sup, score_unsup, path, name):
+  all_conf_sup = np.concatenate([conf_sup['preds_res']['n'], conf_sup['preds_res']['s']])
+  all_score_unsup = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
+  true_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
+  
+  plot_distance_distribution(conf_sup['preds_res']['n'], conf_sup['preds_res']['s'], path, f"{name}_sup")
+  plot_distance_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, f"{name}_unsup")
+
+  plot_sup_unsup_scatter(conf_sup, score_unsup, path, name)
+  
   log_name = os.path.join(path, 'result_log.txt')
   msg = ''
   with open(log_name, "w") as log_file:
     now = time.strftime("%c")
     msg += f"=============== Testing result {now} ===================\n"
-    msg += f"=============== All small image mean & std =============\n"
-    msg += f"Normal mean: {result['all']['n'].mean()}\n"
-    msg += f"Normal std: {result['all']['n'].std()}\n"
-    msg += f"Smura mean: {result['all']['s'].mean()}\n"
-    msg += f"Smura std: {result['all']['s'].std()}\n"
-    msg += f"=============== anomaly max prediction =================\n"    
-    msg += prediction(true_label, all_max_anomaly_score, path, f"{name}_max")
-    msg += f"=============== anomaly mean prediction ================\n"
-    msg += prediction(true_label, all_mean_anomaly_score, path, f"{name}_mean")
-    msg += f"=============== anomaly max & mean prediction ==========\n"
-    msg += max_meam_prediction(true_label, all_max_anomaly_score, all_mean_anomaly_score, path, f"{name}_max_mean")
+    msg += sup_unsup_prediction(true_label, all_conf_sup, all_score_unsup, path, f"{name}_sup_unsup")
     
     log_file.write(msg)
 
@@ -461,7 +411,6 @@ def main_worker(gpu, ngpus_per_node, config):
   model_sup.load_state_dict(torch.load('./supervised_model/model.pt'))  
   
   res_sup = evaluate(model_sup, dataloaders)
-  print(res_sup['preds_res']['all'])
   print(res_sup['preds_res']['all'].shape)
   
   # unsupervised
@@ -480,22 +429,17 @@ def main_worker(gpu, ngpus_per_node, config):
       print(f"Now path: {data_path}")
 
       tester = Tester(config) # Default debug = False
-      big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean = tester.test(normal_mean,normal_std) # max mean 
+      _, _, big_imgs_scores_mean = tester.test(normal_mean,normal_std) # max mean 
 
       if idx == 0:
-          res_unsup['all']['n'] = big_imgs_scores.copy() # all 小圖
-          res_unsup['max']['n'] = big_imgs_scores_max.copy() # max
           res_unsup['mean']['n'] = big_imgs_scores_mean.copy() # mean
       elif idx == 1:
-          res_unsup['all']['s'] = big_imgs_scores.copy() # all 小圖
-          res_unsup['max']['s'] = big_imgs_scores_max.copy() # max
           res_unsup['mean']['s'] = big_imgs_scores_mean.copy() # mean
       else:
           raise
-  
-  # result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
-  plot_sup_unsup_scatter(res_sup, res_unsup, config['result_path'], "Super_Unsuper")
-  # show_and_save_result(res_unsup, config['result_path'], result_name)
+
+  result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}_with_seresnext101"
+  show_and_save_result(res_sup, res_unsup, config['result_path'], result_name)
 
 if __name__ == '__main__':
   ngpus_per_node = torch.cuda.device_count()
@@ -516,8 +460,8 @@ if __name__ == '__main__':
   config['model_epoch'] = args.model_epoch
   config['anomaly_score'] = args.anomaly_score
   config['test_type'] = args.test_type
-  config['normalized'] = args.normalized
-
+  config['pos_normalized'] = args.pos_normalized
+  config['minmax'] = args.minmax
 
   gpu_device = 0
   # print('using {} GPUs for testing ... '.format(ngpus_per_node))
