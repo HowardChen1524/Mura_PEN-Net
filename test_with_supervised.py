@@ -530,7 +530,7 @@ if __name__ == '__main__':
   # mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config))
 
   # create result directory
-  result_path = os.path.join(config['save_dir'], 'results_{}_{}'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+  result_path = os.path.join(config['save_dir'], 'results_{}_{}_with_sup'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
   os.makedirs(result_path, exist_ok=True)
 
   config['result_path'] = result_path
