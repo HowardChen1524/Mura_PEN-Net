@@ -28,6 +28,8 @@ from core import metric as module_metric
 import cv2
 from PIL import Image, ImageDraw
 
+from sklearn.preprocessing import MinMaxScaler
+
 class Tester():
   def __init__(self, config, debug=False):
     self.config = config
@@ -43,25 +45,26 @@ class Tester():
    
     # create inpainting & position directory
     if self.config['test_type'] == 'position':
-      if self.config['normalized']:
-        self.inpainting_path = os.path.join(self.config['result_path'], 'check_inpaint_normalized')
+      if self.config['pos_normalized']:
+        self.inpainting_path = os.path.join(self.config['result_path'], 'check_inpaint_pos_normalized')
         os.makedirs(self.inpainting_path, exist_ok=True)
-        self.draw_path = os.path.join(self.config['result_path'], 'true_pred_postion_normalized')
+        self.draw_path = os.path.join(self.config['result_path'], 'true_pred_postion_pos_normalized')
         os.makedirs(self.draw_path, exist_ok=True)
       else:
         self.inpainting_path = os.path.join(self.config['result_path'], 'check_inpaint')
         os.makedirs(self.inpainting_path, exist_ok=True)
         self.draw_path = os.path.join(self.config['result_path'], 'true_pred_postion')
         os.makedirs(self.draw_path, exist_ok=True)
-      
-    # anomaly score
-    self.l2_loss = nn.MSELoss()
 
-    # Model
-    net = importlib.import_module('model.'+config['model_name'])
-    self.netG = set_device(net.InpaintGenerator())
-    
+    # Model    
+    # net = importlib.import_module('model.'+config['model_name']) # 根據不同項目的配置，動態導入對應的模型
+    # self.netG = set_device(net.InpaintGenerator())
+    # self.netD = set_device(net.Discriminator(in_channels=3, use_sigmoid=config['losses']['gan_type'] != 'hinge'))
     self.load()
+    
+    # anomaly score
+    self.l1_loss = nn.L1Loss()
+    self.l2_loss = nn.MSELoss()
 
   # load netG and netD
   def load(self):
@@ -79,26 +82,65 @@ class Tester():
     data = torch.load(gen_path, map_location = lambda storage, loc: set_device(storage)) 
     self.netG.load_state_dict(data['netG'])
     self.netG.eval()
-
-  def compute_score(self, imgs, re_imgs, anomaly_score):
+    self.netD.load_state_dict(data['netD'])
+    self.netD.eval()
+    
+  def compute_score(self, imgs, feats, re_imgs, anomaly_score):
     if anomaly_score == 'MSE':
       crop_scores = []
       for i in range(0,225): # 196 for 128*128
           crop_scores.append(self.l2_loss(imgs[i], re_imgs[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
-      return crop_scores             
+      return crop_scores    
+
     elif anomaly_score == 'Mask_MSE':
-      
       mask_imgs = imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
            int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
       mask_re_imgs = re_imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
            int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
-      
       crop_scores = []
       for i in range(0,225): # 196 for 128*128
           crop_scores.append(self.l2_loss(mask_imgs[i], mask_re_imgs[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
-      return crop_scores             
+      return crop_scores    
+
+    elif anomaly_score == 'MAE': 
+      crop_scores = []
+      for i in range(0,225): # 196 for 128*128
+          crop_scores.append(self.l1_loss(imgs[i], re_imgs[i]).detach().cpu().numpy())
+      crop_scores = np.array(crop_scores)
+      return crop_scores  
+
+    elif anomaly_score == 'Mask_MAE': 
+      mask_imgs = imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
+           int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
+      mask_re_imgs = re_imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
+           int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
+      crop_scores = []
+      for i in range(0,225): # 196 for 128*128
+          crop_scores.append(self.l1_loss(mask_imgs[i], mask_re_imgs[i]).detach().cpu().numpy())
+      crop_scores = np.array(crop_scores)
+      return crop_scores   
+
+    elif anomaly_score == 'Discriminator': 
+      ori_feat = self.netD(imgs)
+      re_feat = self.netD(re_imgs)
+      # MSE
+      for i in range(0,225): # 196 for 128*128
+          crop_scores.append(self.l2_loss(ori_feat[i], re_feat[i]).detach().cpu().numpy())
+      crop_scores = np.array(crop_scores)
+      return crop_scores 
+
+    elif anomaly_score == 'Pyramid_L1': 
+      crop_scores = []
+      for i in range(0,225): # 196 for 128*128
+        pyramid_loss = 0 
+        for _, f in enumerate(feats):
+          pyramid_loss += self.l1_loss(f, F.interpolate(imgs, size=f.size()[2:4], mode='bilinear', align_corners=True))
+        crop_scores.append(pyramid_loss)
+      crop_scores = np.array(crop_scores)
+      return crop_scores
+
     else:
       raise ValueError("Please choose one measure mode!")
   
@@ -166,12 +208,12 @@ class Tester():
       images, masks = set_device([images, masks])
       images_masked = images*(1-masks) + masks
       with torch.no_grad():
-        _, output = self.netG(torch.cat((images_masked, masks), dim=1), masks)
+        feats, output = self.netG(torch.cat((images_masked, masks), dim=1), masks)
       
       # compute loss
-      imgs_scores = self.compute_score(images, output, self.config['anomaly_score'])
+      imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
 
-      if self.config['normalized']:
+      if self.config['pos_normalized']:
         if n_mean == None or n_std == None:
           raise
         else:
@@ -191,6 +233,10 @@ class Tester():
         big_imgs_scores_max = np.append(big_imgs_scores_max, max_score)
         big_imgs_scores_mean = np.append(big_imgs_scores_mean, mean_score)
     
+    if self.config['minmax']: # now only for mean
+      scaler = MinMaxScaler(feature_range=(0, 1)).fit(big_imgs_scores_mean.reshape(-1, 1))
+      big_imgs_scores_mean = scaler.transform(big_imgs_scores_mean.reshape(-1, 1))
+
     return big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean
 
   def test_position(self, df, n_mean=None, n_std=None):
@@ -214,7 +260,7 @@ class Tester():
       # compute loss
       imgs_scores = self.compute_score(images, output, self.config['anomaly_score'])
 
-      if self.config['normalized']:
+      if self.config['pos_normalized']:
         if n_mean == None or n_std == None:
           raise
         else:

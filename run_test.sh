@@ -9,8 +9,8 @@ python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mas
 
 # python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/
 # python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -n
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -n
+# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
+# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
 
 # windows
 # python test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp E:/CSE/AI/Mura/mura_data/typecplus/ 
