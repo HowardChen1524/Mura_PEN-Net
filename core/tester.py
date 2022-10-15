@@ -57,9 +57,9 @@ class Tester():
         os.makedirs(self.draw_path, exist_ok=True)
 
     # Model    
-    # net = importlib.import_module('model.'+config['model_name']) # 根據不同項目的配置，動態導入對應的模型
-    # self.netG = set_device(net.InpaintGenerator())
-    # self.netD = set_device(net.Discriminator(in_channels=3, use_sigmoid=config['losses']['gan_type'] != 'hinge'))
+    net = importlib.import_module('model.'+config['model_name']) # 根據不同項目的配置，動態導入對應的模型
+    self.netG = set_device(net.InpaintGenerator())
+    self.netD = set_device(net.Discriminator(in_channels=3, use_sigmoid=config['losses']['gan_type'] != 'hinge'))
     self.load()
     
     # anomaly score
@@ -78,10 +78,13 @@ class Tester():
     model_path = self.config['save_dir']
 
     gen_path = os.path.join(model_path, 'gen_{}.pth'.format(str(model_epoch).zfill(5)))
-    print('Loading model from {}...'.format(gen_path))
+    print('Loading G model from {}...'.format(gen_path)) 
     data = torch.load(gen_path, map_location = lambda storage, loc: set_device(storage)) 
     self.netG.load_state_dict(data['netG'])
     self.netG.eval()
+    dis_path = os.path.join(model_path, 'dis_{}.pth'.format(str(model_epoch).zfill(5)))
+    print('Loading D model from {}...'.format(dis_path))
+    data = torch.load(dis_path, map_location = lambda storage, loc: set_device(storage)) 
     self.netD.load_state_dict(data['netD'])
     self.netD.eval()
     
@@ -126,6 +129,7 @@ class Tester():
       ori_feat = self.netD(imgs)
       re_feat = self.netD(re_imgs)
       # MSE
+      crop_scores = []
       for i in range(0,225): # 196 for 128*128
           crop_scores.append(self.l2_loss(ori_feat[i], re_feat[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
@@ -136,11 +140,11 @@ class Tester():
       for i in range(0,225): # 196 for 128*128
         pyramid_loss = 0 
         for _, f in enumerate(feats):
-          pyramid_loss += self.l1_loss(f, F.interpolate(imgs, size=f.size()[2:4], mode='bilinear', align_corners=True))
+          pyramid_loss += self.l1_loss(f, F.interpolate(imgs, size=f.size()[2:4], mode='bilinear', align_corners=True)).detach().cpu().numpy()
         crop_scores.append(pyramid_loss)
       crop_scores = np.array(crop_scores)
       return crop_scores
-
+    
     else:
       raise ValueError("Please choose one measure mode!")
   
@@ -213,7 +217,7 @@ class Tester():
       # compute loss
       imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
 
-      if self.config['pos_normalized']:
+      if self.config['pos_normalized'] and self.config['test_type'] != "position": # not for typec+
         if n_mean == None or n_std == None:
           raise
         else:
@@ -236,7 +240,7 @@ class Tester():
     if self.config['minmax']: # now only for mean
       scaler = MinMaxScaler(feature_range=(0, 1)).fit(big_imgs_scores_mean.reshape(-1, 1))
       big_imgs_scores_mean = scaler.transform(big_imgs_scores_mean.reshape(-1, 1))
-
+      big_imgs_scores_mean = big_imgs_scores_mean.reshape(-1,)
     return big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean
 
   def test_position(self, df, n_mean=None, n_std=None):
@@ -255,10 +259,10 @@ class Tester():
       images, masks = set_device([images, masks])
       images_masked = images*(1-masks) + masks
       with torch.no_grad():
-        _, output = self.netG(torch.cat((images_masked, masks), dim=1), masks)
+        feats, output = self.netG(torch.cat((images_masked, masks), dim=1), masks)
       
       # compute loss
-      imgs_scores = self.compute_score(images, output, self.config['anomaly_score'])
+      imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
 
       if self.config['pos_normalized']:
         if n_mean == None or n_std == None:

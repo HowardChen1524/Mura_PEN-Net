@@ -73,12 +73,13 @@ def roc(labels, scores, path, name):
     optimal_th_index = np.argmax(tpr - fpr)
     optimal_th = th[optimal_th_index]
 
-    plot_roc_curve(fpr, tpr, path, name)
+    plot_roc_curve(roc_auc, fpr, tpr, path, name)
     # optimal_th = 6.4e-05
     # optimal_th = 5.75e-05
     return roc_auc, optimal_th
-def plot_roc_curve(fpr, tpr, path, name):
-    plt.plot(fpr, tpr, color='orange', label='ROC')
+
+def plot_roc_curve(roc_auc, fpr, tpr, path, name):
+    plt.plot(fpr, tpr, color='orange', label="ROC curve (area = %0.2f)" % roc_auc)
     plt.plot([0, 1], [0, 1], color='darkblue', linestyle='--')
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
@@ -86,6 +87,7 @@ def plot_roc_curve(fpr, tpr, path, name):
     plt.legend()
     plt.savefig(f"{path}/{name}_roc.png")
     plt.clf()
+
 def plot_distance_distribution(n_scores, s_scores, path, name):
     # bins = np.linspace(0.000008,0.00005) # Mask MSE
     plt.hist(s_scores, bins=50, alpha=0.5, density=True, label="smura")
@@ -95,6 +97,7 @@ def plot_distance_distribution(n_scores, s_scores, path, name):
     plt.legend(loc='upper right')
     plt.savefig(f"{path}/{name}_dist_mean.png")
     plt.clf()
+
 def plot_distance_scatter(n_max, s_max, n_mean, s_mean, path, name):
     # normal
     x1 = n_max
@@ -128,6 +131,7 @@ def plot_distance_scatter(n_max, s_max, n_mean, s_mean, path, name):
     plt.legend(loc='upper right')
     plt.savefig(f"{path}/{name}__scatter.png")
     plt.clf()
+
 def prediction(labels, scores, path, name):
     result_msg = ''
     pred_labels = [] 
@@ -156,6 +160,7 @@ def prediction(labels, scores, path, name):
     result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
     result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
     return result_msg
+
 def max_meam_prediction(labels, max_scores, mean_scores, path, name):
     result_msg = ''
     # score = a*max + b*mean
@@ -203,6 +208,7 @@ def max_meam_prediction(labels, max_scores, mean_scores, path, name):
     result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
     result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
     return result_msg
+
 def show_and_save_result(result, path, name):
   all_max_anomaly_score = np.concatenate([result['max']['n'], result['max']['s']])
   all_mean_anomaly_score = np.concatenate([result['mean']['n'], result['mean']['s']])
@@ -271,22 +277,22 @@ def main_worker(gpu, ngpus_per_node, config):
     res_unsup['all'] = defaultdict(list)
 
     if config['pos_normalized']:
-      # for idx, data_path in enumerate([config['data_loader']['test_data_root_normal']]):
-      #   config['data_loader']['test_data_root'] = data_path
-      #   print("Start to compute normal mean and std")
-      #   print(f"Now path: {data_path}")
+      for idx, data_path in enumerate([config['data_loader']['test_data_root_normal']]):
+        config['data_loader']['test_data_root'] = data_path
+        print("Start to compute normal mean and std")
+        print(f"Now path: {data_path}")
 
-      #   tester = Tester(config) # Default debug = False
-      #   big_imgs_scores, _, _ = tester.test() # max mean 
-      #   normal_mean = big_imgs_scores.mean()
-      #   normal_std = big_imgs_scores.std()
+        tester = Tester(config) # Default debug = False
+        big_imgs_scores, _, _ = tester.test() # max mean 
+        normal_mean = big_imgs_scores.mean()
+        normal_std = big_imgs_scores.std()
       # print(normal_mean)
       # print(normal_std)
       # Mask
       # normal_mean = 4.2993142e-05
       # normal_std = 1.3957943e-05
-      normal_mean = 4.2993142e-05
-      normal_std = 1.3958662e-05
+      # normal_mean = 4.2993142e-05
+      # normal_std = 1.3958662e-05
 
     for idx, data_path in enumerate([config['data_loader']['test_data_root_smura']]):
       config['data_loader']['test_data_root'] = data_path
@@ -329,7 +335,7 @@ if __name__ == '__main__':
   config['pos_normalized'] = args.pos_normalized
   config['minmax'] = args.minmax
 
-  gpu_device = 0
+  gpu_device = 1
   # print('using {} GPUs for testing ... '.format(ngpus_per_node))
   print(f'using GPU device {gpu_device} for testing ... ')
   # setup distributed parallel training environments
@@ -340,7 +346,7 @@ if __name__ == '__main__':
   # mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config))
 
   # create result directory
-  result_path = os.path.join(config['save_dir'], 'results_{}_{}'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+  result_path = os.path.join(config['save_dir'], 'results_{}_{}_ori_resolution'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
   os.makedirs(result_path, exist_ok=True)
 
   config['result_path'] = result_path

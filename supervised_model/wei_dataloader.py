@@ -96,7 +96,6 @@ def make_training_dataloader(ds):
 def make_test_dataloader(ds):
     m = ds["test"]["mura"]
     n = ds["test"]["normal"]
-    test_ds = torch.utils.data.ConcatDataset([m, n])
     s_dataloader = DataLoader(m, 
                             batch_size=1,
                             shuffle=False, 

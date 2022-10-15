@@ -131,6 +131,15 @@ def calc_matrix(labels_res, preds_res):
     results['tnr0.9996_recall'].append((((curve_df[curve_df['tnr'] > 0.9996].iloc[0]) + (curve_df[curve_df['tnr'] < 0.9996].iloc[-1])) / 2).recall)
     results['tnr0.9996_precision'].append((((curve_df[curve_df['tnr'] > 0.9996].iloc[0]) + (curve_df[curve_df['tnr'] < 0.9996].iloc[-1])) / 2).precision)
 
+    # fill empty slot
+    for k, v in results.items():
+        if len(v) == 0:
+            results[k].append(-1)
+
+    model_report = pd.DataFrame(results).T
+    
+    return model_report, curve_df
+    
 def get_data_info(t, l, image_info, csv_path):
     res = []
     image_info = image_info[(image_info["train_type"] == t) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850MVR05")]
@@ -177,6 +186,7 @@ def plot_roc_curve_supervised(labels_res, preds_res):
 
 def evaluate(model, testloaders, save_path='./supervised_model/'):
     model.eval().cuda()
+    # model.eval()
     res = defaultdict(dict)
     for l in ['preds_res','labels_res','files_res']:
       for t in ['n', 's']:
@@ -190,6 +200,8 @@ def evaluate(model, testloaders, save_path='./supervised_model/'):
         for inputs, labels, names in tqdm(loader):
           inputs = inputs.cuda()
           labels = labels.cuda()
+          # inputs = inputs
+          # labels = labels
           
           preds = model(inputs)
           
@@ -210,9 +222,13 @@ def evaluate(model, testloaders, save_path='./supervised_model/'):
           # files_res.extend(names)
           # preds_res.extend(preds)
           # labels_res.extend(labels)
+          
     res['files_res']['all'] = res['files_res']['n'] + res['files_res']['s']
     res['preds_res']['all'] = np.array(res['preds_res']['n'] + res['preds_res']['s'])
     res['labels_res']['all'] = np.array(res['labels_res']['n'] + res['labels_res']['s'])
+    print(np.array(res['preds_res']['n']))
+    print(np.array(res['preds_res']['s']))
+    
     # preds_res = np.array(preds_res)
     # labels_res = np.array(labels_res)
     # print(preds_res)
@@ -226,7 +242,12 @@ def evaluate(model, testloaders, save_path='./supervised_model/'):
     fig.savefig(os.path.join(save_path, "roc_curve.png"))
     print("roc curve saved!")
   
+    model_report, curve_df = calc_matrix(res['labels_res']['all'], res['preds_res']['all'])
+    model_report.to_csv(os.path.join(save_path, "model_report.csv"))
+    curve_df.to_csv(os.path.join(save_path, "model_precision_recall_curve.csv"))
+    print("model report record finished!")
     return res
+
 # unsupervised
 # world_size : GPU num -> 1
 # local_rank : GPU device -> 0
@@ -240,18 +261,18 @@ def roc(labels, scores, path, name):
     optimal_th_index = np.argmax(tpr - fpr)
     optimal_th = th[optimal_th_index]
 
-    plot_roc_curve(fpr, tpr, path, name)
+    plot_roc_curve(roc_auc, fpr, tpr, path, name)
     
     return roc_auc, optimal_th
 
-def plot_roc_curve(fpr, tpr, path, name):
+def plot_roc_curve(roc_auc, fpr, tpr, path, name):
     plt.clf()
-    plt.plot(fpr, tpr, color='orange', label='ROC')
+    plt.plot(fpr, tpr, color='orange', label="ROC curve (area = %0.2f)" % roc_auc)
     plt.plot([0, 1], [0, 1], color='darkblue', linestyle='--')
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title('Receiver Operating Characteristic (ROC) Curve')
-    plt.legend()
+    plt.legend(loc="lower right")
     plt.savefig(f"{path}/{name}_roc.png")
     plt.clf()
 
@@ -270,44 +291,31 @@ def plot_distance_distribution(n_scores, s_scores, path, name):
     plt.clf()
 
 def sup_unsup_prediction(labels, all_conf_sup, all_score_unsup, path, name):
-    # result_msg = ''
-    # score = a*max + b*mean
-    # best_a, best_b = 0, 0
-    # best_auc = 0
-    # for ten_a in range(0, 10, 1):
-    #     a = ten_a/10.0
-    #     for ten_b in range(0, 10, 1):
-    #         b = ten_b/10.0
-            
-    #         scores = a*max_scores + b*mean_scores
-    #         fpr, tpr, th = roc_curve(labels, scores)
-    #         current_auc = auc(fpr, tpr)
-    #         if current_auc >= best_auc:
-    #             best_auc = current_auc
-    #             best_a = a
-    #             best_b = b         
+    result_msg = ''
+    best_a, best_b = 0, 0
+    best_auc = 0
+    for ten_a in range(0, 10, 1):
+        a = ten_a/10.0
+        for ten_b in range(0, 10, 1):
+            b = ten_b/10.0            
+            scores = a*all_conf_sup + b*all_score_unsup
+            fpr, tpr, th = roc_curve(labels, scores)
+            current_auc = auc(fpr, tpr)
+            if current_auc >= best_auc:
+                best_auc = current_auc
+                best_a = a
+                best_b = b         
 
-    # result_msg += f"Param a: {best_a}, b: {best_b}\n"
+    result_msg += f"Param a: {best_a}, b: {best_b}\n"
 
-    # best_scores = best_a*max_scores + best_b*mean_scores
-    # pred_labels = [] 
-    # roc_auc, optimal_th = roc(labels, best_scores, path, name)
-    # for score in best_scores:
-    #     if score >= optimal_th:
-    #         pred_labels.append(1)
-    #     else:
-    #         pred_labels.append(0)
-    
-    # y = -1.333x + 0.8
-    # 1.333x+y-0.8 = 0
-    best_scores = 1.333*all_score_unsup + all_conf_sup - 0.8
+    best_scores = best_a*all_conf_sup + best_b*all_score_unsup
     pred_labels = [] 
-
+    roc_auc, optimal_th = roc(labels, best_scores, path, name)
     for score in best_scores:
-            if score >= 0:
-                pred_labels.append(1)
-            else:
-                pred_labels.append(0)
+        if score >= optimal_th:
+            pred_labels.append(1)
+        else:
+            pred_labels.append(0)
 
     cm = confusion_matrix(labels, pred_labels)
     TP = cm[1][1]
@@ -316,8 +324,8 @@ def sup_unsup_prediction(labels, all_conf_sup, all_score_unsup, path, name):
     TN = cm[0][0]
     DATA_NUM = TN + FP + FN + TP
     result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
-    # result_msg += f"\nAUC: {roc_auc}\n"
-    # result_msg += f"Threshold (highest TPR-FPR): {optimal_th}\n"
+    result_msg += f"\nAUC: {roc_auc}\n"
+    result_msg += f"Threshold (highest TPR-FPR): {optimal_th}\n"
     result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
     result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
     result_msg += f"TNR: {TN/(FP+TN)}\n"
@@ -328,11 +336,93 @@ def sup_unsup_prediction(labels, all_conf_sup, all_score_unsup, path, name):
     result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
     return result_msg
 
+def sup_unsup_prediction_spec_th(labels, all_conf_sup, all_score_unsup, path, name):
+    result_msg = ''
+    
+    # y = ax + b
+    # a = -1.33 b = 0.8
+    # 1.333x + y - 0.8 = 0
+    # pink = [[0, 0.8],[0.6, 0]]
+   
+    # a = -0.3 b = 0.8 
+    # 0.3x + y - 0.8 = 0
+    # green = [[0, 0.8],[1, 0.5]]
+  
+    # a = -1 b = 1.2
+    # x+y-1.2=0
+    # purple = [[0.2, 1],[1, 0.2]]
+    
+    th_list = [[1.333, -0.8], [0.3, -0.8], [1, -1.2]]  
+    for th in th_list:
+      pred_labels = [] 
+      combined_scores = th[0]*all_score_unsup + all_conf_sup + th[1]
+      for score in combined_scores:
+        if score >= 0:
+            pred_labels.append(1)
+        else:
+            pred_labels.append(0)
+    
+      cm = confusion_matrix(labels, pred_labels)
+      TP = cm[1][1]
+      FP = cm[0][1]
+      FN = cm[1][0]
+      TN = cm[0][0]
+      DATA_NUM = TN + FP + FN + TP
+      
+      result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
+      result_msg += f"Threshold line: {th[0]}x+y{th[1]}=0\n"
+      result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
+      result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
+      result_msg += f"TNR: {TN/(FP+TN)}\n"
+      result_msg += f"Precision (PPV): {TP/(TP+FP)}\n"
+      result_msg += f"NPV: {TN/(FN+TN)}\n"
+      result_msg += f"False Alarm Rate (FPR): {FP/(FP+TN)}\n"
+      result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
+      result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
+      result_msg += f"===================================\n"
+
+    return result_msg
+
+def sup_unsup_prediction_auto_th(labels, all_conf_sup, all_score_unsup, path, name):
+    result_msg = ''
+    
+    for m in range(1, 11, 1):
+      m = m/10
+      for b in range(-1, -11, -1):
+        pred_labels = [] 
+        combined_scores = m*all_score_unsup + all_conf_sup + b
+        for score in combined_scores:
+          if score >= 0:
+              pred_labels.append(1)
+          else:
+              pred_labels.append(0)
+        cm = confusion_matrix(labels, pred_labels)
+        TP = cm[1][1]
+        FP = cm[0][1]
+        FN = cm[1][0]
+        TN = cm[0][0]
+        DATA_NUM = TN + FP + FN + TP
+        current_tnr = TN/(FP+TN)
+        if current_tnr >= 0.995:
+          result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
+          result_msg += f"Threshold line: {m}x+1y{b}=0\n"
+          result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
+          result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
+          result_msg += f"TNR: {TN/(FP+TN)}\n"
+          result_msg += f"Precision (PPV): {TP/(TP+FP)}\n"
+          result_msg += f"NPV: {TN/(FN+TN)}\n"
+          result_msg += f"False Alarm Rate (FPR): {FP/(FP+TN)}\n"
+          result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
+          result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
+          result_msg += f"===================================\n"
+
+    return result_msg
+
 def show_and_save_result(conf_sup, score_unsup, path, name):
   all_conf_sup = np.concatenate([conf_sup['preds_res']['n'], conf_sup['preds_res']['s']])
   all_score_unsup = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
   true_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
-  
+
   plot_distance_distribution(conf_sup['preds_res']['n'], conf_sup['preds_res']['s'], path, f"{name}_sup")
   plot_distance_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, f"{name}_unsup")
 
@@ -343,7 +433,12 @@ def show_and_save_result(conf_sup, score_unsup, path, name):
   with open(log_name, "w") as log_file:
     now = time.strftime("%c")
     msg += f"=============== Testing result {now} ===================\n"
+    msg += f"=============== Combined cong & score ===================\n"
     msg += sup_unsup_prediction(true_label, all_conf_sup, all_score_unsup, path, f"{name}_sup_unsup")
+    msg += f"=============== Spec th line ===================\n"
+    msg += sup_unsup_prediction_spec_th(true_label, all_conf_sup, all_score_unsup, path, f"{name}_sup_unsup")
+    msg += f"=============== Auto th line ===================\n"
+    msg += sup_unsup_prediction_auto_th(true_label, all_conf_sup, all_score_unsup, path, f"{name}_sup_unsup")
     
     log_file.write(msg)
 
@@ -380,6 +475,15 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     plt.title('scatter')
     plt.scatter(n_x, n_y, s=5, c ="blue", alpha=0.5, label="normal")
     plt.scatter(s_x, s_y, s=5, c ="red", alpha=0.5, label="smura")
+
+    # spec line
+    pink = [[0, 0.6],[0.8, 0]] # [x1, x2] [y1, y2]
+    green = [[0, 1],[0.8, 0.5]]
+    purple = [[0.2, 1],[1, 0.2]]
+    plt.plot(pink[0], pink[1], color='pink')    
+    plt.plot(green[0], green[1], color='green')
+    plt.plot(purple[0], purple[1], color='purple')    
+    
     plt.legend(loc='upper right')
     plt.savefig(f"{path}/{name}_all_scatter.png")
     plt.clf()
@@ -390,7 +494,7 @@ def main_worker(gpu, ngpus_per_node, config):
 
   # supervised
   # create dataset dataloader
-  csv_path = 'E:/CSE/AI/Mura/mura_data/d23/data_merged.csv'
+  csv_path = '/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv'
   image_info = pd.read_csv(csv_path)
   ds_sup = defaultdict(dict)
   for x in ["test"]:
@@ -408,29 +512,28 @@ def main_worker(gpu, ngpus_per_node, config):
         nn.Linear(2048, 1),
         nn.Sigmoid()
     )
-  model_sup.load_state_dict(torch.load('./supervised_model/model.pt'))  
+  model_sup.load_state_dict(torch.load('./supervised_model/model.pt', map_location=torch.device(f"cuda:{gpu}")))  
   
   res_sup = evaluate(model_sup, dataloaders)
-  print(res_sup['preds_res']['all'].shape)
   
   # unsupervised
   res_unsup = defaultdict(dict)
   for l in ['all','max','meab']:
     for t in ['n','s']:
       res_unsup[l][t] = None
-  # res_unsup['all'] = defaultdict(list)
-  # res_unsup['max'] = defaultdict(list)
-  # res_unsup['mean'] = defaultdict(list)
-  normal_mean = 4.2993142e-05
-  normal_std = 1.3958662e-05
+  normal_mean,normal_std = None, None
+
+  config['data_loader']['test_data_root_normal'] =  r"/hcds_vol/private/howard/mura_data/d23/test/normal_8k/"
+  config['data_loader']['test_data_root_smura'] = r"/hcds_vol/private/howard/mura_data/d23/test/smura_8k/"
   dataset_type_list = [config['data_loader']['test_data_root_normal'], config['data_loader']['test_data_root_smura']]
   for idx, data_path in enumerate(dataset_type_list):
       config['data_loader']['test_data_root'] = data_path
       print(f"Now path: {data_path}")
 
       tester = Tester(config) # Default debug = False
-      _, _, big_imgs_scores_mean = tester.test(normal_mean,normal_std) # max mean 
-
+      # _, _, big_imgs_scores_mean = tester.test(normal_mean,normal_std) 
+      _, _, big_imgs_scores_mean = tester.test() 
+      
       if idx == 0:
           res_unsup['mean']['n'] = big_imgs_scores_mean.copy() # mean
       elif idx == 1:
@@ -463,7 +566,10 @@ if __name__ == '__main__':
   config['pos_normalized'] = args.pos_normalized
   config['minmax'] = args.minmax
 
-  gpu_device = 0
+  print(config['data_loader']['test_data_root_normal'])
+  print(config['data_loader']['test_data_root_smura'])
+  
+  gpu_device = 1
   # print('using {} GPUs for testing ... '.format(ngpus_per_node))
   print(f'using GPU device {gpu_device} for testing ... ')
   # setup distributed parallel training environments

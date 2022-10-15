@@ -15,6 +15,11 @@ from contextlib import contextmanager
 import torch
 import torch.distributed as dist
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision import models
+from skimage.transform import resize
 # tensor to image
 def tensor2im(input_image, imtype=np.uint8):
     if isinstance(input_image, torch.Tensor): 
@@ -482,3 +487,37 @@ def enhance_img(fp,factor=5):
   new_img = enh_con.enhance(factor=factor)
   return new_img
 
+################# Style loss #########################
+######################################################
+class VGG16FeatureExtractor(nn.Module):
+    def __init__(self):
+        super(VGG16FeatureExtractor, self).__init__()
+        vgg16 = models.vgg16(pretrained=True)
+
+        self.enc_1 = nn.Sequential(*vgg16.features[:5])
+        self.enc_2 = nn.Sequential(*vgg16.features[5:10])
+        self.enc_3 = nn.Sequential(*vgg16.features[10:17])
+
+        # print(self.enc_1)
+        # print(self.enc_2)
+        # print(self.enc_3)
+        # raise
+        # fix the encoder
+        for i in range(3):
+            for param in getattr(self, 'enc_{:d}'.format(i + 1)).parameters():
+                param.requires_grad = False
+
+    def forward(self, image):
+
+        results = [image]
+        for i in range(3):
+            func = getattr(self, 'enc_{:d}'.format(i + 1))
+            results.append(func(results[-1]))
+        return results[1:]
+
+def gram_matrix(feat):
+    (batch, ch, h, w) = feat.size()
+    feat = feat.view(batch, ch, h*w)
+    feat_t = feat.transpose(1, 2)
+    gram = torch.bmm(feat, feat_t) / (ch * h * w)
+    return gram
