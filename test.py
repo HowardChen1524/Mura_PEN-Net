@@ -1,354 +1,226 @@
 # -*- coding: utf-8 -*-
+import os
+import json
+import argparse
+
+import numpy as np
+import pandas as pd
+from collections import defaultdict
 
 import torch
-from torch.autograd import Variable
 
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.nn.init as init
-import torch.utils.model_zoo as model_zoo
-from torchvision import models
-import torch.multiprocessing as mp
-from torchvision import transforms
-from torch.utils.data import DataLoader
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torchvision.utils import make_grid, save_image
-
-import cv2
-import matplotlib.pyplot as plt
-from PIL import Image
-import numpy as np
-import math
-import time
-import os
-import argparse
-import copy
-import importlib
-import datetime
-import random
-import sys
-import json
-import glob
-
-### My libs
-from core.utils import set_device, postprocess, ZipReader, set_seed
-from core.utils import postprocess
-from core.dataset import Dataset
+from core.utils import set_seed
 from core.tester import Tester
+from core.utils_howard import mkdir, minmax_scaling, \
+                              plot_score_distribution, plot_score_scatter, \
+                              unsup_calc_metric, unsup_find_param_max_mean
 
-from datetime import date
-from collections import defaultdict
-from sklearn.metrics import recall_score, accuracy_score, precision_score, f1_score, roc_curve, auc, confusion_matrix
-import matplotlib.pyplot as plt
-import pandas as pd
-
+# ===== CLI Params =====
 parser = argparse.ArgumentParser(description="MGP")
 parser.add_argument("-c", "--config", type=str, required=True)
 # parser.add_argument("-l", "--level",  type=int, required=True)
-parser.add_argument("-l", "--level",  type=int)
+# parser.add_argument("-l", "--level",  type=int)
 parser.add_argument("-mn", "--model_name", type=str, required=True)
 parser.add_argument("-m", "--mask", default=None, type=str)
 parser.add_argument("-s", "--size", default=None, type=int)
-parser.add_argument("-p", "--port", type=str, default="23451")
-# new add
+# parser.add_argument("-p", "--port", type=str, default="23451")
 parser.add_argument("-me", "--model_epoch", type=int, default=-1)
 parser.add_argument("-as", "--anomaly_score", type=str, default='MSE', help='MSE | Mask_MSE')
+parser.add_argument("-dn", "--dataset_name", type=str, default=None)
 parser.add_argument("-np", "--normal_path", type=str, default=None)
 parser.add_argument("-sp", "--smura_path", type=str, default=None)
 parser.add_argument("-t", "--test_type", type=str, default='normal', help='normal | position')
 parser.add_argument("-pn", "--pos_normalized", action='store_true', help='Use for typecplus')
 parser.add_argument("-mm", "--minmax", action='store_true', help='Use for combine supervised')
+parser.add_argument("-gpu", "--gpu_id", type=int, default=0)
+
 args = parser.parse_args()
-
-# world_size : GPU num -> 1
-# local_rank : GPU device -> 0
-# global_rank : GPU device -> 0
-def roc(labels, scores, path, name):
-
-
-    fpr, tpr, th = roc_curve(labels, scores)
-    
-    roc_auc = auc(fpr, tpr)
-    
-    optimal_th_index = np.argmax(tpr - fpr)
-    optimal_th = th[optimal_th_index]
-
-    plot_roc_curve(roc_auc, fpr, tpr, path, name)
-    # optimal_th = 6.4e-05
-    # optimal_th = 5.75e-05
-    return roc_auc, optimal_th
-
-def plot_roc_curve(roc_auc, fpr, tpr, path, name):
-    plt.plot(fpr, tpr, color='orange', label="ROC curve (area = %0.2f)" % roc_auc)
-    plt.plot([0, 1], [0, 1], color='darkblue', linestyle='--')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('Receiver Operating Characteristic (ROC) Curve')
-    plt.legend()
-    plt.savefig(f"{path}/{name}_roc.png")
-    plt.clf()
-
-def plot_distance_distribution(n_scores, s_scores, path, name):
-    # bins = np.linspace(0.000008,0.00005) # Mask MSE
-    plt.hist(s_scores, bins=50, alpha=0.5, density=True, label="smura")
-    plt.hist(n_scores, bins=50, alpha=0.5, density=True, label="normal")
-    plt.xlabel('Anomaly Score')
-    plt.title('Score Distribution')
-    plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}_dist_mean.png")
-    plt.clf()
-
-def plot_distance_scatter(n_max, s_max, n_mean, s_mean, path, name):
-    # normal
-    x1 = n_max
-    y1 = n_mean
-    # smura
-    x2 = s_max
-    y2 = s_mean
-    # 設定座標軸
-    # normal
-    plt.xlabel("max")
-    plt.ylabel("mean")
-    plt.title('scatter')
-    plt.scatter(x1, y1, s=5, c ="blue", alpha=0.3, label="normal")
-    plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}_normal_scatter.png")
-    plt.clf()
-    # smura
-    plt.xlabel("max")
-    plt.ylabel("mean")
-    plt.title('scatter')
-    plt.scatter(x2, y2, s=5, c ="red", alpha=0.3, label="smura")
-    plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}_smura_scatter.png")
-    plt.clf()
-    # all
-    plt.xlabel("max")
-    plt.ylabel("mean")
-    plt.title('scatter')
-    plt.scatter(x1, y1, s=5, c ="blue", alpha=0.3, label="normal")
-    plt.scatter(x2, y2, s=5, c ="red", alpha=0.3, label="smura")
-    plt.legend(loc='upper right')
-    plt.savefig(f"{path}/{name}__scatter.png")
-    plt.clf()
-
-def prediction(labels, scores, path, name):
-    result_msg = ''
-    pred_labels = [] 
-    roc_auc, optimal_th = roc(labels, scores, path, name)
-    for score in scores:
-        if score >= optimal_th:
-            pred_labels.append(1)
-        else:
-            pred_labels.append(0)
-    
-    cm = confusion_matrix(labels, pred_labels)
-    TP = cm[1][1]
-    FP = cm[0][1]
-    FN = cm[1][0]
-    TN = cm[0][0]
-    DATA_NUM = TN + FP + FN + TP
-    result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
-    result_msg += f"\nAUC: {roc_auc}\n"
-    result_msg += f"Threshold (highest TPR-FPR): {optimal_th}\n"
-    result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
-    result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
-    result_msg += f"TNR: {TN/(FP+TN)}\n"
-    result_msg += f"Precision (PPV): {TP/(TP+FP)}\n"
-    result_msg += f"NPV: {TN/(FN+TN)}\n"
-    result_msg += f"False Alarm Rate (FPR): {FP/(FP+TN)}\n"
-    result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
-    result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
-    return result_msg
-
-def max_meam_prediction(labels, max_scores, mean_scores, path, name):
-    result_msg = ''
-    # score = a*max + b*mean
-    best_a, best_b = 0, 0
-    best_auc = 0
-    for ten_a in range(0, 10, 1):
-        a = ten_a/10.0
-        for ten_b in range(0, 10, 1):
-            b = ten_b/10.0
-            
-            scores = a*max_scores + b*mean_scores
-            fpr, tpr, th = roc_curve(labels, scores)
-            current_auc = auc(fpr, tpr)
-            if current_auc >= best_auc:
-                best_auc = current_auc
-                best_a = a
-                best_b = b         
-
-    result_msg += f"Param a: {best_a}, b: {best_b}\n"
-
-    best_scores = best_a*max_scores + best_b*mean_scores
-    pred_labels = [] 
-    roc_auc, optimal_th = roc(labels, best_scores, path, name)
-    for score in best_scores:
-        if score >= optimal_th:
-            pred_labels.append(1)
-        else:
-            pred_labels.append(0)
-    
-    cm = confusion_matrix(labels, pred_labels)
-    TP = cm[1][1]
-    FP = cm[0][1]
-    FN = cm[1][0]
-    TN = cm[0][0]
-    DATA_NUM = TN + FP + FN + TP
-    result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
-    result_msg += f"\nAUC: {roc_auc}\n"
-    result_msg += f"Threshold (highest TPR-FPR): {optimal_th}\n"
-    result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
-    result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
-    result_msg += f"TNR: {TN/(FP+TN)}\n"
-    result_msg += f"Precision (PPV): {TP/(TP+FP)}\n"
-    result_msg += f"NPV: {TN/(FN+TN)}\n"
-    result_msg += f"False Alarm Rate (FPR): {FP/(FP+TN)}\n"
-    result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
-    result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
-    return result_msg
-
-def show_and_save_result(result, path, name):
-  all_max_anomaly_score = np.concatenate([result['max']['n'], result['max']['s']])
-  all_mean_anomaly_score = np.concatenate([result['mean']['n'], result['mean']['s']])
-  true_label = [0]*result['mean']['n'].shape[0]+[1]*result['mean']['s'].shape[0]
+# =======================
+def initail_setting(with_sup_model=False):
   
-  plot_distance_distribution(result['mean']['n'], result['mean']['s'], path, name)
-  plot_distance_scatter(result['max']['n'], result['max']['s'], 
-                          result['mean']['n'], result['mean']['s'], path, name)
+  config = json.load(open(args.config))
+
+  # ===== dataset setting =====
+  if args.mask is not None:
+    config['data_loader']['mask'] = args.mask
+
+  if args.size is not None:
+    config['data_loader']['w'] = config['data_loader']['h'] = args.size
+
+  if args.normal_path is not None:
+    config['data_loader']['test_data_root_normal'] = args.normal_path
+
+  if args.smura_path is not None:
+    config['data_loader']['test_data_root_smura'] = args.smura_path
+
+  if args.dataset_name is not None:
+    config['data_loader']['name'] = args.dataset_name
+
+  # ===== model setting =====
+  config['model_name'] = args.model_name
+  
+  # ===== Test setting =====
+  config['model_epoch'] = args.model_epoch
+  config['test_type'] = args.test_type
+  config['anomaly_score'] = args.anomaly_score
+  config['pos_normalized'] = args.pos_normalized
+  config['minmax'] = args.minmax
+  config['distributed'] = False
+
+  # ===== Path setting =====
+  config['save_dir'] = os.path.join(config['save_dir'], '{}_{}_{}{}'.format(config['model_name'], 
+    config['data_loader']['name'], config['data_loader']['mask'], config['data_loader']['w']))
+
+  if with_sup_model:
+    if config['pos_normalized']:
+      result_path = os.path.join(config['save_dir'], 'results_{}_{}_with_sup_pn'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+    else:
+      result_path = os.path.join(config['save_dir'], 'results_{}_{}_with_sup'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+  else:
+    if config['pos_normalized']:
+      result_path = os.path.join(config['save_dir'], 'results_{}_{}_pn'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+    else:
+      result_path = os.path.join(config['save_dir'], 'results_{}_{}'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+  config['result_path'] = result_path
+  
+  # ===== GPU setting =====
+  gpu = args.gpu_id 
+  torch.cuda.set_device(gpu)
+  print(f'using GPU device {gpu} for testing ... ')
+
+  # ===== Seed setting =====
+  set_seed(config['seed'])
+
+  return config, gpu
+
+def export_conf_score(score_max, score_mean, path):
+  log_name = os.path.join(path, 'score_max_log.txt')
+  np.savetxt(log_name, score_max, delimiter=",")
+  log_name = os.path.join(path, 'score_mean_log.txt')
+  np.savetxt(log_name, score_mean, delimiter=",")
+
+  print("save score finished!")
+
+def show_and_save_result(score_unsup, minmax, path, name):
+  all_max_anomaly_score = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
+  all_mean_anomaly_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
+  true_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
+  
+  export_conf_score(all_max_anomaly_score, all_mean_anomaly_score, path)
+
+  if minmax:
+    all_max_anomaly_score = minmax_scaling(all_max_anomaly_score)
+    score_unsup['max']['n'] =  all_max_anomaly_score[:score_unsup['max']['n'].shape[0]]
+    score_unsup['max']['s'] =  all_max_anomaly_score[score_unsup['max']['n'].shape[0]:]
+
+    all_mean_anomaly_score = minmax_scaling(all_mean_anomaly_score)
+    score_unsup['mean']['n'] =  all_mean_anomaly_score[:score_unsup['mean']['n'].shape[0]]
+    score_unsup['mean']['s'] =  all_mean_anomaly_score[score_unsup['mean']['n'].shape[0]:]
+
+  plot_score_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
+  plot_score_scatter(score_unsup['max']['n'], score_unsup['max']['s'], score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
 
   log_name = os.path.join(path, 'result_log.txt')
   msg = ''
   with open(log_name, "w") as log_file:
-    now = time.strftime("%c")
-    msg += f"=============== Testing result {now} ===================\n"
     msg += f"=============== All small image mean & std =============\n"
-    msg += f"Normal mean: {result['all']['n'].mean()}\n"
-    msg += f"Normal std: {result['all']['n'].std()}\n"
-    msg += f"Smura mean: {result['all']['s'].mean()}\n"
-    msg += f"Smura std: {result['all']['s'].std()}\n"
-    msg += f"=============== anomaly max prediction =================\n"    
-    msg += prediction(true_label, all_max_anomaly_score, path, f"{name}_max")
-    msg += f"=============== anomaly mean prediction ================\n"
-    msg += prediction(true_label, all_mean_anomaly_score, path, f"{name}_mean")
-    msg += f"=============== anomaly max & mean prediction ==========\n"
-    msg += max_meam_prediction(true_label, all_max_anomaly_score, all_mean_anomaly_score, path, f"{name}_max_mean")
+    msg += f"Normal mean: {score_unsup['all']['n'].mean()}\n"
+    msg += f"Normal std: {score_unsup['all']['n'].std()}\n"
+    msg += f"Smura mean: {score_unsup['all']['s'].mean()}\n"
+    msg += f"Smura std: {score_unsup['all']['s'].std()}\n"
+    msg += f"=============== Anomaly max prediction =================\n"    
+    msg += unsup_calc_metric(true_label, all_max_anomaly_score, path, f"{name}_max")
+    msg += f"=============== Anomaly mean prediction ================\n"
+    msg += unsup_calc_metric(true_label, all_mean_anomaly_score, path, f"{name}_mean")
+    msg += f"=============== Anomaly max & mean prediction ==========\n"
+    msg += unsup_find_param_max_mean(true_label, all_max_anomaly_score, all_mean_anomaly_score, path, f"{name}_max_mean")
     
-    log_file.write(msg)
+    log_file.write(msg)  
 
-def main_worker(gpu, ngpus_per_node, config):
-  torch.cuda.set_device(gpu)
-  set_seed(config['seed'])
+def unsupervised_model_prediction(config):
+  res_unsup = defaultdict(dict)
+  for l in ['all','max','mean', 'fn']:
+    for t in ['n','s']:
+      res_unsup[l][t] = None
 
-  if config['test_type'] == 'normal':
-    res_unsup = defaultdict(list)
-    res_unsup['all'] = defaultdict(list)
-    res_unsup['max'] = defaultdict(list)
-    res_unsup['mean'] = defaultdict(list)
+  if config['pos_normalized']:
+    for idx, data_path in enumerate([config['data_loader']['test_data_root_normal']]):
+      config['data_loader']['test_data_root'] = data_path
+      print("Start to compute normal mean and std")
+      print(f"Now path: {data_path}")
 
-    dataset_type_list = [config['data_loader']['test_data_root_normal'], config['data_loader']['test_data_root_smura']]
-    for idx, data_path in enumerate(dataset_type_list):
+      tester = Tester(config)
+      n_pos_mean, n_pos_std = tester.position_normalize()
+  else:
+    n_pos_mean = n_pos_std = []
+
+  dataset_type_list = [config['data_loader']['test_data_root_normal'], config['data_loader']['test_data_root_smura']]
+  for idx, data_path in enumerate(dataset_type_list):
+    config['data_loader']['test_data_root'] = data_path
+    print(f"Now path: {data_path}")
+
+    tester = Tester(config)
+    big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, big_imgs_fn = tester.test(n_pos_mean, n_pos_std) 
+    
+    if idx == 0: # normal
+      res_unsup['all']['n'] = big_imgs_scores.copy() # all 小圖
+      res_unsup['max']['n'] = big_imgs_scores_max.copy() # max
+      res_unsup['mean']['n'] = big_imgs_scores_mean.copy() # mean
+      res_unsup['fn']['n'] = big_imgs_fn.copy()
+    elif idx == 1: # smura
+      res_unsup['all']['s'] = big_imgs_scores.copy() # all 小圖
+      res_unsup['max']['s'] = big_imgs_scores_max.copy() # max
+      res_unsup['mean']['s'] = big_imgs_scores_mean.copy() # mean
+      res_unsup['fn']['s'] = big_imgs_fn.copy()
+
+      # 找特例
+      # print(res_unsup['mean']['n'].max())
+      # print(res_unsup['mean']['n'].argmax())
+      # print(res_unsup['fn']['n'][res_unsup['mean']['n'].argmax()])
+
+    return res_unsup
+
+def unsupervised_model_prediction_position(config):
+  df = pd.read_csv(config['type_c_plus_path'])
+  print(f"Mura 最大 :\n{df.iloc[(df['h']+df['w']).argmax()][['fn','w','h']]}")
+  print(f"Mura 最小 :\n{df.iloc[(df['h']+df['w']).argmin()][['fn','w','h']]}")
+
+  res_unsup = defaultdict(dict)
+
+  if config['pos_normalized']:
+    for idx, data_path in enumerate([config['data_loader']['test_data_root_normal']]):
       config['data_loader']['test_data_root'] = data_path
       print(f"Now path: {data_path}")
 
       tester = Tester(config) # Default debug = False
-      big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean = tester.test() # max mean 
-      
-      if idx == 0:
-        res_unsup['all']['n'] = big_imgs_scores.copy() # all 小圖
-        res_unsup['max']['n'] = big_imgs_scores_max.copy() # max
-        res_unsup['mean']['n'] = big_imgs_scores_mean.copy() # mean
-      elif idx == 1:
-        res_unsup['all']['s'] = big_imgs_scores.copy() # all 小圖
-        res_unsup['max']['s'] = big_imgs_scores_max.copy() # max
-        res_unsup['mean']['s'] = big_imgs_scores_mean.copy() # mean
-      else:
-        raise
-    
-    result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
-    show_and_save_result(res_unsup, config['result_path'], result_name)
-  elif config['test_type'] == 'position':
-    df = pd.read_csv(r'./Mura_type_c_plus.csv')
-    print(f"Mura 最大 :\n{df.iloc[(df['h']+df['w']).argmax()][['fn','w','h']]}")
-    print(f"Mura 最小 :\n{df.iloc[(df['h']+df['w']).argmin()][['fn','w','h']]}")
+      n_pos_mean, n_pos_std = tester.position_normalize()
 
-    res_unsup = defaultdict(list)
-    res_unsup['all'] = defaultdict(list)
+  for idx, data_path in enumerate([config['data_loader']['test_data_root_smura']]):
+    config['data_loader']['test_data_root'] = data_path
+    print(f"Now path: {data_path}")
+
+    tester = Tester(config) # Default debug = False
 
     if config['pos_normalized']:
-      for idx, data_path in enumerate([config['data_loader']['test_data_root_normal']]):
-        config['data_loader']['test_data_root'] = data_path
-        print("Start to compute normal mean and std")
-        print(f"Now path: {data_path}")
+      big_imgs_scores = tester.test_position(df, n_pos_mean, n_pos_std)
+    else:
+      big_imgs_scores = tester.test_position(df)
 
-        tester = Tester(config) # Default debug = False
-        big_imgs_scores, _, _ = tester.test() # max mean 
-        normal_mean = big_imgs_scores.mean()
-        normal_std = big_imgs_scores.std()
-      # print(normal_mean)
-      # print(normal_std)
-      # Mask
-      # normal_mean = 4.2993142e-05
-      # normal_std = 1.3957943e-05
-      # normal_mean = 4.2993142e-05
-      # normal_std = 1.3958662e-05
-
-    for idx, data_path in enumerate([config['data_loader']['test_data_root_smura']]):
-      config['data_loader']['test_data_root'] = data_path
-      print(f"Now path: {data_path}")
-
-      tester = Tester(config) # Default debug = False
-
-      if config['pos_normalized']:
-        big_imgs_scores = tester.test_position(df, normal_mean, normal_std)
-        print(f"Mean: {big_imgs_scores.mean()}")
-        print(f"std: {big_imgs_scores.std()}")
-      else:
-        big_imgs_scores = tester.test_position(df)
-
-      res_unsup['all']['s'] = big_imgs_scores.copy() # all 小圖
-    
-    print(f"Smura mean: {res_unsup['all']['s'].mean()}")
-    print(f"Smura std: {res_unsup['all']['s'].std()}")
-    
+    res_unsup['all']['s'] = big_imgs_scores.copy() # all 小圖
+  
+  return res_unsup
 
 if __name__ == '__main__':
-  ngpus_per_node = torch.cuda.device_count()
-  config = json.load(open(args.config))
-  if args.mask is not None:
-    config['data_loader']['mask'] = args.mask
-  if args.size is not None:
-    config['data_loader']['w'] = config['data_loader']['h'] = args.size
-  if args.normal_path is not None:
-    config['data_loader']['test_data_root_normal'] = args.normal_path
-  if args.smura_path is not None:
-    config['data_loader']['test_data_root_smura'] = args.smura_path
-  config['model_name'] = args.model_name
-  # config['save_dir'] = os.path.join(config['save_dir'], '{}_{}_{}{}_{}'.format(config['model_name'], 
-  #   config['data_loader']['name'], config['data_loader']['mask'], config['data_loader']['w'], date.today()))
-  config['save_dir'] = os.path.join(config['save_dir'], '{}_{}_{}{}_{}'.format(config['model_name'], 
-    config['data_loader']['name'], config['data_loader']['mask'], config['data_loader']['w'], "2022-09-29"))
-  config['model_epoch'] = args.model_epoch
-  config['anomaly_score'] = args.anomaly_score
-  config['test_type'] = args.test_type
-  config['pos_normalized'] = args.pos_normalized
-  config['minmax'] = args.minmax
+  with_sup_model = False
+  config, gpu = initail_setting(with_sup_model)  
 
-  gpu_device = 1
-  # print('using {} GPUs for testing ... '.format(ngpus_per_node))
-  print(f'using GPU device {gpu_device} for testing ... ')
-  # setup distributed parallel training environments
-  # ngpus_per_node = torch.cuda.device_count()
-  # config['world_size'] = ngpus_per_node
-  # config['init_method'] = 'tcp://127.0.0.1:'+ args.port 
-  # config['distributed'] = True
-  # mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config))
-
-  # create result directory
-  result_path = os.path.join(config['save_dir'], 'results_{}_{}_ori_resolution'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
-  os.makedirs(result_path, exist_ok=True)
-
-  config['result_path'] = result_path
-  config['distributed'] = False
-  main_worker(gpu_device, 1, config) # GPU device, GPU num, config
+  if config['test_type'] == 'normal':
+    res_unsup = unsupervised_model_prediction(config)
+    result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
+    show_and_save_result(res_unsup, config['minmax'], config['result_path'], result_name)
+  
+  elif config['test_type'] == 'position':
+    res_unsup = unsupervised_model_prediction_position(config)
+    result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
+    print(f"Smura mean: {res_unsup['all']['s'].mean()}")
+    print(f"Smura std: {res_unsup['all']['s'].std()}")

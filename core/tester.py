@@ -28,8 +28,6 @@ from core import metric as module_metric
 import cv2
 from PIL import Image, ImageDraw
 
-from sklearn.preprocessing import MinMaxScaler
-
 class Tester():
   def __init__(self, config, debug=False):
     self.config = config
@@ -91,7 +89,7 @@ class Tester():
   def compute_score(self, imgs, feats, re_imgs, anomaly_score):
     if anomaly_score == 'MSE':
       crop_scores = []
-      for i in range(0,225): # 196 for 128*128
+      for i in range(0,225):  
           crop_scores.append(self.l2_loss(imgs[i], re_imgs[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
       return crop_scores    
@@ -102,14 +100,14 @@ class Tester():
       mask_re_imgs = re_imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
            int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
       crop_scores = []
-      for i in range(0,225): # 196 for 128*128
+      for i in range(0,225):  
           crop_scores.append(self.l2_loss(mask_imgs[i], mask_re_imgs[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
       return crop_scores    
 
     elif anomaly_score == 'MAE': 
       crop_scores = []
-      for i in range(0,225): # 196 for 128*128
+      for i in range(0,225):  
           crop_scores.append(self.l1_loss(imgs[i], re_imgs[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
       return crop_scores  
@@ -120,7 +118,7 @@ class Tester():
       mask_re_imgs = re_imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
            int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
       crop_scores = []
-      for i in range(0,225): # 196 for 128*128
+      for i in range(0,225):  
           crop_scores.append(self.l1_loss(mask_imgs[i], mask_re_imgs[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
       return crop_scores   
@@ -130,14 +128,14 @@ class Tester():
       re_feat = self.netD(re_imgs)
       # MSE
       crop_scores = []
-      for i in range(0,225): # 196 for 128*128
+      for i in range(0,225):  
           crop_scores.append(self.l2_loss(ori_feat[i], re_feat[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
       return crop_scores 
 
     elif anomaly_score == 'Pyramid_L1': 
       crop_scores = []
-      for i in range(0,225): # 196 for 128*128
+      for i in range(0,225):  
         pyramid_loss = 0 
         for _, f in enumerate(feats):
           pyramid_loss += self.l1_loss(f, F.interpolate(imgs, size=f.size()[2:4], mode='bilinear', align_corners=True)).detach().cpu().numpy()
@@ -154,13 +152,13 @@ class Tester():
     img = cv2.cvtColor(np.array(img),cv2.COLOR_RGB2BGR)
     img = cv2.resize(img, (512,512), interpolation=cv2.INTER_AREA)
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
-
+    
     # =====actual mura===== 
     actual_pos_list = []
     for i in range(0, fn_series_list.shape[0]):
         fn_series = fn_series_list.iloc[i]
         # actual_pos_list.append((fn_series['x0'], fn_series['y0'], fn_series['x1'], fn_series['y1']))
-        actual_pos_list.append((int(fn_series['x0']/3.75), int(fn_series['y0']/2.109375), int(fn_series['x1']/ 3.75), int(fn_series['y1']/2.109375)))
+        actual_pos_list.append((int(fn_series['x0']/3.75), int(fn_series['y0']/2.109375), int(fn_series['x1']/ 3.75), int(fn_series['y1']/2.109375))) # 1920*1080 -> 512*512
     
     for actual_pos in actual_pos_list:
         draw = ImageDraw.Draw(img)  
@@ -168,41 +166,45 @@ class Tester():
     
     # =====predict mura=====
     if 'Mask' in self.config['anomaly_score']:
-      bounding_box = (self.crop_size//2,self.crop_size//2)
+      bounding_box = (self.crop_size//2,self.crop_size//2) # 32
     else:
-      bounding_box = (self.crop_size,self.crop_size)
+      bounding_box = (self.crop_size,self.crop_size) # 64
 
     for crop_pos in imgs_pos:
-        # max_crop_img_pos 0~255
-        x = crop_pos % 15 # 0~15
-        y = crop_pos // 15
-        # 0,32,64,96,128,160,192,224,256
+        # max_crop_img_pos 0~225
+        x = crop_pos % 15  # 0~14
+        y = crop_pos // 15 # 0~14
+        # 0,32,64,96,128,160,192,224,256,288,320,352,384,416,448
         crop_x = x * stride
         crop_y = y * stride
         
         # 如果是最後一塊
-        if crop_x + bounding_box[0] > 512:
-            crop_x = 512 - bounding_box[0] # 448
-        if crop_y + bounding_box[1] > 512:
-            crop_y = 512 - bounding_box[1] # 448
+        if crop_x + self.crop_size > 512:
+          crop_x = 512 - self.crop_size # 448
+        if crop_y + self.crop_size > 512:
+          crop_y = 512 - self.crop_size # 448
 
-        pred_pos = [crop_x, crop_y, crop_x+bounding_box[0]-1, crop_y+bounding_box[1]-1]
-
+        if 'Mask' in self.config['anomaly_score']:
+          pred_pos = [crop_x+(bounding_box[0]//2), crop_y+(bounding_box[1]//2), crop_x+(bounding_box[0]//2)+bounding_box[0]-1, crop_y+(bounding_box[1]//2)+bounding_box[1]-1]
+        else:
+          pred_pos = [crop_x, crop_y, crop_x+bounding_box[0]-1, crop_y+bounding_box[1]-1]
+      
         # create rectangle image
         draw = ImageDraw.Draw(img)  
         draw.rectangle(pred_pos, outline ="red")
 
     img.save(os.path.join(self.draw_path, fn))
 
-  def test(self, n_mean=None, n_std=None):
+  def test(self, n_mean, n_std):
     big_imgs_scores = None
     big_imgs_scores_max = None
     big_imgs_scores_mean = None
+    big_imgs_fn = []
     # iteration through datasets
     for idx, (images, masks, names) in enumerate(self.test_loader):
       print('[{}] {}/{}: {}'.format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         idx, len(self.test_loader), names[0]))
-
+      big_imgs_fn.append(names[0])
       # delete first dim
       bs, ncrops, c, h, w = images.size()
       images = images.view(-1, c, h, w)
@@ -210,18 +212,20 @@ class Tester():
       masks = masks.view(-1, c, h, w)
       
       images, masks = set_device([images, masks])
-      images_masked = images*(1-masks) + masks
+      images_masked = images*(1-masks) + masks # 中心變白的
       with torch.no_grad():
         feats, output = self.netG(torch.cat((images_masked, masks), dim=1), masks)
       
       # compute loss
       imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
 
-      if self.config['pos_normalized'] and self.config['test_type'] != "position": # not for typec+
-        if n_mean == None or n_std == None:
-          raise
+      # 如果是正常測試且需要做 normalized 才跑
+      if self.config['pos_normalized'] and self.config['test_type'] == "normal": 
+        if len(n_mean) == 0 or len(n_std) == 0:
+          pass
         else:
-          imgs_scores = (imgs_scores-n_mean)/n_std
+          for pos in range(0,imgs_scores.shape[0]):
+            imgs_scores[pos] = (imgs_scores[pos]-n_mean[pos])/n_std[pos]
 
       max_score = np.max(imgs_scores) # Anomaly max
       mean_score = np.mean(imgs_scores) # Anomaly mean
@@ -230,18 +234,14 @@ class Tester():
 
       if idx == 0:
         big_imgs_scores = imgs_scores.copy()
-        big_imgs_scores_max = np.array(max_score)
-        big_imgs_scores_mean = np.array(mean_score)
+        big_imgs_scores_max = max_score.copy()
+        big_imgs_scores_mean = mean_score.copy()
       else:
         big_imgs_scores = np.append(big_imgs_scores, imgs_scores)
         big_imgs_scores_max = np.append(big_imgs_scores_max, max_score)
         big_imgs_scores_mean = np.append(big_imgs_scores_mean, mean_score)
-    
-    if self.config['minmax']: # now only for mean
-      scaler = MinMaxScaler(feature_range=(0, 1)).fit(big_imgs_scores_mean.reshape(-1, 1))
-      big_imgs_scores_mean = scaler.transform(big_imgs_scores_mean.reshape(-1, 1))
-      big_imgs_scores_mean = big_imgs_scores_mean.reshape(-1,)
-    return big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean
+
+    return big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, np.array(big_imgs_fn)
 
   def test_position(self, df, n_mean=None, n_std=None):
     big_imgs_scores = None
@@ -264,12 +264,16 @@ class Tester():
       # compute loss
       imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
 
+      # 如果需要做 normalized 才跑
       if self.config['pos_normalized']:
-        if n_mean == None or n_std == None:
-          raise
-        else:
-          imgs_scores = (imgs_scores-n_mean)/n_std
-      
+        for pos in range(0,imgs_scores.shape[0]):
+          imgs_scores[pos] = (imgs_scores[pos]-n_mean[pos])/n_std[pos]
+        # if n_mean == None or n_std == None: # use a.any() or a.all()
+        #   raise
+        # else:
+          # for pos in range(0,imgs_scores.shape[0]):
+          #   imgs_scores[pos] = (imgs_scores[pos]-n_mean[pos])/n_std[pos]
+
       # find img info from df
       fn_series_list = df[df['fn']==names[0]]
       inpainting_img_path = os.path.join(self.inpainting_path, names[0][:-4])
@@ -288,6 +292,7 @@ class Tester():
       fp = f"{self.config['data_loader']['test_data_root_smura']}/{names[0]}"
       self.draw_mura_position(fp, names[0], fn_series_list, imgs_pos, self.crop_stride)
 
+      # save inpainting image
       for i in range(0, images.shape[0]): 
         inpainting_img_pos_path = os.path.join(inpainting_img_path, str(i))
         os.makedirs(inpainting_img_pos_path, exist_ok=True)
@@ -305,3 +310,33 @@ class Tester():
     print(big_imgs_scores.std())
       
     return big_imgs_scores
+
+  def position_normalize(self):
+    n_all_crop_scores = []
+    # iteration through datasets
+    for idx, (images, masks, names) in enumerate(self.test_loader):
+      print('[{}] {}/{}: {}'.format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        idx, len(self.test_loader), names[0]))
+      
+      # delete first dim
+      bs, ncrops, c, h, w = images.size()
+      images = images.view(-1, c, h, w)
+      bs, ncrops, c, h, w = masks.size()
+      masks = masks.view(-1, c, h, w)
+      
+      images, masks = set_device([images, masks])
+      images_masked = images*(1-masks) + masks # 中心變白的
+      with torch.no_grad():
+        feats, output = self.netG(torch.cat((images_masked, masks), dim=1), masks)
+      
+      # compute loss
+      imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
+
+      n_all_crop_scores.append(imgs_scores)
+
+    n_all_crop_scores = np.array(n_all_crop_scores)
+    print(n_all_crop_scores.shape)
+    n_pos_mean = np.mean(n_all_crop_scores, axis=0)
+    n_pos_std = np.std(n_all_crop_scores, axis=0)
+
+    return n_pos_mean, n_pos_std

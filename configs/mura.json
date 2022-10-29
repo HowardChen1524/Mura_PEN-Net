@@ -1,14 +1,16 @@
 {
     "seed": 2022,
-    "save_dir": "release_model/",
+    "save_dir": "./release_model/",
+    "type_c_plus_path": "./Mura_type_c_plus.csv",
     "data_loader": {
         "name": "mura_d23_8k", 
-        "train_data_root": "/hcds_vol/private/howard/mura_data/train/normal_8k/",
-        "train_data_max": -1,
+        "csv_path": "/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv",
+        "train_data_root": "/hcds_vol/private/howard/mura_data/d23_merge/train/normal",
+        "train_data_max": 5000,
         "test_data_root": "",
         "test_data_max": -1,
-        "test_data_root_normal": "/hcds_vol/private/howard/mura_data/d23/test/normal_8k/",
-        "test_data_root_smura": "/hcds_vol/private/howard/mura_data/d23/test/smura_8k/",
+        "test_data_root_normal": "/hcds_vol/private/howard/mura_data/d23_merge/test/test_normal_8k/",
+        "test_data_root_smura": "/hcds_vol/private/howard/mura_data/d23_merge/test/test_smura_8k/",
         "mask": "square",
         "extend": 5,
         "w": 512,
@@ -40,6 +42,7 @@
     "supervised": {
         "focalloss_alpha": 0.75, 
         "focalloss_gamma": 2.0,
-        "img_size": 256
+        "img_size": 256,
+        "model_path": "./supervised_model/model.pt"
     }
 }

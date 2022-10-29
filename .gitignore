@@ -1,6 +1,8 @@
 .ipynb_checkpoints/
 __pycache__
 release_model
+exp_result
+temp
 *.jpg
 *.yml
 *.npz
