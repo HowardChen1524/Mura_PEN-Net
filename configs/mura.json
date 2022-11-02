@@ -2,17 +2,20 @@
     "seed": 2022,
     "save_dir": "./release_model/",
     "type_c_plus_path": "./Mura_type_c_plus.csv",
+    "model": {
+        "version": "mura_d23_8k"
+    },
     "data_loader": {
         "name": "mura_d23_8k", 
         "csv_path": "/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv",
+        "data_root": "/hcds_vol/private/howard/mura_data/d23_merge/",
         "train_data_root": "/hcds_vol/private/howard/mura_data/d23_merge/train/normal",
-        "train_data_max": 5000,
+        "train_data_max": -1,
         "test_data_root": "",
-        "test_data_max": -1,
         "test_data_root_normal": "/hcds_vol/private/howard/mura_data/d23_merge/test/test_normal_8k/",
         "test_data_root_smura": "/hcds_vol/private/howard/mura_data/d23_merge/test/test_smura_8k/",
+        "test_data_max": -1,
         "mask": "square",
-        "extend": 5,
         "w": 512,
         "h": 512,
         "color": "RGB",
@@ -40,9 +43,6 @@
         "num_workers": 4
     },
     "supervised": {
-        "focalloss_alpha": 0.75, 
-        "focalloss_gamma": 2.0,
-        "img_size": 256,
         "model_path": "./supervised_model/model.pt"
     }
 }

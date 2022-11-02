@@ -20,9 +20,9 @@ from core.utils import tensor2im
 # from torchvision.transforms.functional import InterpolationMode
 import pandas as pd
 
-class Dataset(torch.utils.data.Dataset):
-  def __init__(self, data_args, debug=False, split='train', level=None):
-    super(Dataset, self).__init__()
+class AUO_Dataset(torch.utils.data.Dataset):
+  def __init__(self, data_args, split='train', level=None):
+    super(AUO_Dataset, self).__init__()
     self.split = split # 'train' or 'test'
     self.level = level # None
     self.w, self.h = data_args['w'], data_args['h']
@@ -33,6 +33,7 @@ class Dataset(torch.utils.data.Dataset):
         self.dir = data_args['train_data_root']
         self.rand_crop_num = data_args['rand_crop_num']
         self.data = make_dataset(self.dir) # return image path list (image_folder.py)
+        
         shuffle(self.data)
         if data_args['train_data_max'] != -1: # -1 表示全部
           self.data = self.data[:data_args['train_data_max']]

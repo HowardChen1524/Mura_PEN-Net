@@ -39,7 +39,7 @@ class Tester_Supervised():
       self.dataset_type = 'normal'
     elif ds_type == 1:
       self.dataset_type = 'smura'
-    self.test_dataset = A19_Dataset(config['data_loader'], debug=debug, split='test')
+    self.test_dataset = A19_Dataset(config['data_loader'], split='test')
     self.test_loader = DataLoader(self.test_dataset, 
                             batch_size=1, 
                             shuffle=False, 

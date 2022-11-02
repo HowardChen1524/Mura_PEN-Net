@@ -21,23 +21,20 @@ from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid, save_image
 import torch.distributed as dist
 
-from core.dataset import Dataset
+from core.dataset import AUO_Dataset
 from core.utils import set_seed, set_device, Progbar, postprocess, tensor2im
 from core.loss import AdversarialLoss, PerceptualLoss, StyleLoss, VGG19
 from core import metric as module_metric
 
 
 class Trainer():
-  def __init__(self, config, debug=False):
+  def __init__(self, config):
     self.config = config
     self.epoch = 0
     self.total_iteration = 0
-    # if debug:
-    #   self.config['trainer']['save_freq'] = 5
-    #   self.config['trainer']['valid_freq'] = 5
 
     # setup data set and data loader
-    self.train_dataset = Dataset(config['data_loader'], debug=debug, split='train')
+    self.train_dataset = AUO_Dataset(config['data_loader'], split='train')
     worker_init_fn = partial(set_seed, base=config['seed']) # 將 set_seed 的 base param 固定為 config['seed']，並命名為 worker_init_fn
     self.train_sampler = None
     # if config['distributed']:
@@ -290,17 +287,9 @@ class Trainer():
   #       pass
 
   def train(self):
-    # while True:
-    #   self.epoch += 1
-    #   # if self.config['distributed']:
-    #   #   self.train_sampler.set_epoch(self.epoch)
-    #   self._train_epoch()
-    #   if self.total_iteration > self.config['trainer']['iterations']:
-    #     break
-
     while True: # opt.epoch_count default 1
       self.epoch += 1
-      if self.epoch > self.train_args['epochs']+1:
+      if self.epoch > self.train_args['epochs'] + 1:
         break
       self._train_epoch()
     print('\nEnd training....')

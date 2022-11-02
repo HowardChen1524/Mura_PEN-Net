@@ -1,21 +1,9 @@
 #!/bin/bash
-# =====normal test=====
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t normal -mm 
-
-# =====typec+ position=====
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as MAE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MAE -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Pyramid_L1 -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
-# python3 test.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Discriminator -t position -sp /hcds_vol/private/howard/mura_data/typecplus/img/ -pn
-
-# =====with supervised model=====
-# python3 test_with_supervised.py -c configs/mura.json -mn pennet -m square -s 512 -me 100 -as Mask_MSE -t normal -mm 
 
 declare -a test_type=( 
+                        # test_with_supervised_blind.py
                         test_with_supervised.py
-                        test.py
+                        # test.py
                      )
 
 declare -a measure_list=(
@@ -29,25 +17,43 @@ do
         echo $measure
         python3 $type \
         -c configs/mura.json \
-        -dn "mura_d23_8k" \
+        -dn "mura_d24_d25_8k" \
+        -mv "mura_d23_8k" \
         -mn pennet -m square -s 512 \
         -t normal -me 100 -as $measure \
         -mm \
-        # -pn \
+        -ut \
+        -dp "/hcds_vol/private/howard/mura_data/d25_merge/" \
+        -cp "/hcds_vol/private/howard/mura_data/d25_merge/d25_data_merged.csv" \
+        -np "/hcds_vol/private/howard/mura_data/d25_merge_8k/d2425_all_normal_8k/" \
+        -sp "/hcds_vol/private/howard/mura_data/d25_merge_8k/d2425_all_smura_8k/" 
     done
 done
 
-# windows
-# E:/CSE/AI/Mura/mura_data/typecplus/ 
+for type in ${test_type[@]}
+do
+    for measure in ${measure_list[@]}
+    do
+        echo $measure
+        python3 $type \
+        -c configs/mura.json \
+        -dn "mura_d24_d25_8k" \
+        -mv "mura_d23_8k" \
+        -mn pennet -m square -s 512 \
+        -t normal -me 100 -as $measure \
+        -mm \
+        -pn \
+        -ut \
+        -dp "/hcds_vol/private/howard/mura_data/d25_merge/" \
+        -cp "/hcds_vol/private/howard/mura_data/d25_merge/d25_data_merged.csv" \
+        -np "/hcds_vol/private/howard/mura_data/d25_merge_8k/d2425_all_normal_8k/" \
+        -sp "/hcds_vol/private/howard/mura_data/d25_merge_8k/d2425_all_smura_8k/" 
+    done
+done
 
-# 確認用同樣解析度 -> 沒影響
-# 確認用同樣resize演篹法 -> 0.799 -> 0.782
-# 確認 minmax 修改是否正確 ok
-# 做 minmax 重新跑一次 mask mse test -> 沒影響
-# 結合 supervised 
-# test th
+# supervised model 資料讀取 -> 先分別讀兩個不同資料夾
+# blind test
 
-# 如何印出那個特例點
-
-# dataset ok debug 參數沒用
-# tester ok draw 原始圖片size要改成變數
+# 整合 supervised function
+# 確認code 
+# supervised model 資料讀取統一

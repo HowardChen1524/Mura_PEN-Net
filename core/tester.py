@@ -21,7 +21,7 @@ from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid, save_image
 import torch.distributed as dist
 
-from core.dataset import Dataset
+from core.dataset import AUO_Dataset
 from core.utils import set_seed, set_device, Progbar, postprocess, tensor2im
 from core.loss import AdversarialLoss, PerceptualLoss, StyleLoss, VGG19
 from core import metric as module_metric
@@ -29,12 +29,14 @@ import cv2
 from PIL import Image, ImageDraw
 
 class Tester():
-  def __init__(self, config, debug=False):
+  def __init__(self, config):
     self.config = config
     self.crop_size = config['data_loader']['crop_size']
     self.crop_stride = config['data_loader']['slid_crop_stride']
+    self.w = config['data_loader']['w']
+    self.h = config['data_loader']['h']
     # setup data set and data loader
-    self.test_dataset = Dataset(config['data_loader'], debug=debug, split='test')
+    self.test_dataset = AUO_Dataset(config['data_loader'], split='test')
     self.test_loader = DataLoader(self.test_dataset, 
                             batch_size=1, 
                             shuffle=False, 
@@ -146,11 +148,11 @@ class Tester():
     else:
       raise ValueError("Please choose one measure mode!")
   
-  def draw_mura_position(self, fp, fn, fn_series_list, imgs_pos, stride):
+  def draw_mura_position(self, w, h, fp, fn, fn_series_list, imgs_pos, stride):
     # 讀取大圖
     img = Image.open(fp)
     img = cv2.cvtColor(np.array(img),cv2.COLOR_RGB2BGR)
-    img = cv2.resize(img, (512,512), interpolation=cv2.INTER_AREA)
+    img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
     
     # =====actual mura===== 
@@ -290,7 +292,7 @@ class Tester():
       
       # draw pos
       fp = f"{self.config['data_loader']['test_data_root_smura']}/{names[0]}"
-      self.draw_mura_position(fp, names[0], fn_series_list, imgs_pos, self.crop_stride)
+      self.draw_mura_position(self.w, self.h, fp, names[0], fn_series_list, imgs_pos, self.crop_stride)
 
       # save inpainting image
       for i in range(0, images.shape[0]): 

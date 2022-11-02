@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
 import json
-import argparse
 
 import numpy as np
 import pandas as pd
@@ -9,33 +8,15 @@ from collections import defaultdict
 
 import torch
 
+from opt.option import get_test_parser
 from core.utils import set_seed
 from core.tester import Tester
 from core.utils_howard import mkdir, minmax_scaling, \
                               plot_score_distribution, plot_score_scatter, \
                               unsup_calc_metric, unsup_find_param_max_mean
 
-# ===== CLI Params =====
-parser = argparse.ArgumentParser(description="MGP")
-parser.add_argument("-c", "--config", type=str, required=True)
-# parser.add_argument("-l", "--level",  type=int, required=True)
-# parser.add_argument("-l", "--level",  type=int)
-parser.add_argument("-mn", "--model_name", type=str, required=True)
-parser.add_argument("-m", "--mask", default=None, type=str)
-parser.add_argument("-s", "--size", default=None, type=int)
-# parser.add_argument("-p", "--port", type=str, default="23451")
-parser.add_argument("-me", "--model_epoch", type=int, default=-1)
-parser.add_argument("-as", "--anomaly_score", type=str, default='MSE', help='MSE | Mask_MSE')
-parser.add_argument("-dn", "--dataset_name", type=str, default=None)
-parser.add_argument("-np", "--normal_path", type=str, default=None)
-parser.add_argument("-sp", "--smura_path", type=str, default=None)
-parser.add_argument("-t", "--test_type", type=str, default='normal', help='normal | position')
-parser.add_argument("-pn", "--pos_normalized", action='store_true', help='Use for typecplus')
-parser.add_argument("-mm", "--minmax", action='store_true', help='Use for combine supervised')
-parser.add_argument("-gpu", "--gpu_id", type=int, default=0)
+args = get_test_parser().parse_args()
 
-args = parser.parse_args()
-# =======================
 def initail_setting(with_sup_model=False):
   
   config = json.load(open(args.config))
@@ -58,29 +39,37 @@ def initail_setting(with_sup_model=False):
 
   # ===== model setting =====
   config['model_name'] = args.model_name
-  
+      
+  if args.model_version is not None:
+    config['model']['version'] = args.model_version
+
   # ===== Test setting =====
   config['model_epoch'] = args.model_epoch
   config['test_type'] = args.test_type
   config['anomaly_score'] = args.anomaly_score
   config['pos_normalized'] = args.pos_normalized
   config['minmax'] = args.minmax
-  config['distributed'] = False
+  config['using_record'] = args.using_record
 
   # ===== Path setting =====
+  if args.csv_path is not None:
+    config['data_loader']['csv_path'] = args.csv_path
+
   config['save_dir'] = os.path.join(config['save_dir'], '{}_{}_{}{}'.format(config['model_name'], 
-    config['data_loader']['name'], config['data_loader']['mask'], config['data_loader']['w']))
+    config['model']['version'], config['data_loader']['mask'], config['data_loader']['w']))
 
   if with_sup_model:
     if config['pos_normalized']:
-      result_path = os.path.join(config['save_dir'], 'results_{}_{}_with_sup_pn'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}_with_sup_pn'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
     else:
-      result_path = os.path.join(config['save_dir'], 'results_{}_{}_with_sup'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}_with_sup'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
   else:
     if config['pos_normalized']:
-      result_path = os.path.join(config['save_dir'], 'results_{}_{}_pn'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}_pn'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
     else:
-      result_path = os.path.join(config['save_dir'], 'results_{}_{}'.format(str(config['model_epoch']).zfill(5), config['anomaly_score']))
+      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
+  mkdir(result_path)
+  
   config['result_path'] = result_path
   
   # ===== GPU setting =====
@@ -93,7 +82,7 @@ def initail_setting(with_sup_model=False):
 
   return config, gpu
 
-def export_conf_score(score_max, score_mean, path):
+def export_score(score_max, score_mean, path):
   log_name = os.path.join(path, 'score_max_log.txt')
   np.savetxt(log_name, score_max, delimiter=",")
   log_name = os.path.join(path, 'score_mean_log.txt')
@@ -106,7 +95,7 @@ def show_and_save_result(score_unsup, minmax, path, name):
   all_mean_anomaly_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
   true_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
   
-  export_conf_score(all_max_anomaly_score, all_mean_anomaly_score, path)
+  export_score(all_max_anomaly_score, all_mean_anomaly_score, path)
 
   if minmax:
     all_max_anomaly_score = minmax_scaling(all_max_anomaly_score)
@@ -178,7 +167,7 @@ def unsupervised_model_prediction(config):
       # print(res_unsup['mean']['n'].argmax())
       # print(res_unsup['fn']['n'][res_unsup['mean']['n'].argmax()])
 
-    return res_unsup
+  return res_unsup
 
 def unsupervised_model_prediction_position(config):
   df = pd.read_csv(config['type_c_plus_path'])
@@ -192,14 +181,14 @@ def unsupervised_model_prediction_position(config):
       config['data_loader']['test_data_root'] = data_path
       print(f"Now path: {data_path}")
 
-      tester = Tester(config) # Default debug = False
+      tester = Tester(config)
       n_pos_mean, n_pos_std = tester.position_normalize()
 
   for idx, data_path in enumerate([config['data_loader']['test_data_root_smura']]):
     config['data_loader']['test_data_root'] = data_path
     print(f"Now path: {data_path}")
 
-    tester = Tester(config) # Default debug = False
+    tester = Tester(config)
 
     if config['pos_normalized']:
       big_imgs_scores = tester.test_position(df, n_pos_mean, n_pos_std)
@@ -213,7 +202,7 @@ def unsupervised_model_prediction_position(config):
 if __name__ == '__main__':
   with_sup_model = False
   config, gpu = initail_setting(with_sup_model)  
-
+  
   if config['test_type'] == 'normal':
     res_unsup = unsupervised_model_prediction(config)
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
