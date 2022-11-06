@@ -188,3 +188,17 @@ class AUO_Dataset(torch.utils.data.Dataset):
       sample_loader = DataLoader(dataset=self,batch_size=batch_size,drop_last=True)
       for item in sample_loader:
         yield item
+
+class AI9_Dataset(torch.utils.data.Dataset):
+    def __init__(self, feature, target, name, transform=None):
+        self.X = feature # path
+        self.Y = target # label
+        self.N = name # name
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        img = Image.open(self.X[idx])
+        return self.transform(img), self.Y[idx], self.N[idx]

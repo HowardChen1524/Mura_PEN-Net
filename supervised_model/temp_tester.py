@@ -29,7 +29,7 @@ import cv2
 from PIL import Image, ImageDraw
 
 from supervised_model.loss import WeightedFocalLoss
-from supervised_model.dataset import A19_Dataset
+from supervised_model.dataset import AI9_Dataset
 
 class Tester_Supervised():
   def __init__(self, config, ds_type):
@@ -39,7 +39,7 @@ class Tester_Supervised():
       self.dataset_type = 'normal'
     elif ds_type == 1:
       self.dataset_type = 'smura'
-    self.test_dataset = A19_Dataset(config['data_loader'], split='test')
+    self.test_dataset = AI9_Dataset(config['data_loader'], split='test')
     self.test_loader = DataLoader(self.test_dataset, 
                             batch_size=1, 
                             shuffle=False, 

@@ -1,30 +1,18 @@
 import os
 import time
-import math
 import glob
-import shutil
 import importlib
-import datetime
-import numpy as np
-from PIL import Image
-from math import log10
 
 from functools import partial
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
-from torch.nn.parallel import DistributedDataParallel as DDP
 from tensorboardX import SummaryWriter
-from torchvision.utils import make_grid, save_image
-import torch.distributed as dist
 
 from core.dataset import AUO_Dataset
-from core.utils import set_seed, set_device, Progbar, postprocess, tensor2im
-from core.loss import AdversarialLoss, PerceptualLoss, StyleLoss, VGG19
-from core import metric as module_metric
+from core.utils import set_seed, set_device, Progbar, tensor2im
+from core.loss import AdversarialLoss
 
 
 class Trainer():
@@ -37,9 +25,7 @@ class Trainer():
     self.train_dataset = AUO_Dataset(config['data_loader'], split='train')
     worker_init_fn = partial(set_seed, base=config['seed']) # 將 set_seed 的 base param 固定為 config['seed']，並命名為 worker_init_fn
     self.train_sampler = None
-    # if config['distributed']:
-    #   self.train_sampler = DistributedSampler(self.train_dataset, 
-    #     num_replicas=config['world_size'], rank=config['global_rank'])
+    
     self.train_loader = DataLoader(self.train_dataset, 
                                   # batch_size=config['trainer']['batch_size'] // config['world_size'],
                                   batch_size=config['trainer']['batch_size'],
@@ -54,12 +40,11 @@ class Trainer():
     self.dis_writer = None
     self.gen_writer = None
     self.summary = {}
-    # if self.config['global_rank'] == 0 or (not config['distributed']):
-    if not config['distributed']:
-      # 建立實體。資料存放在：'save_path/dis(gen)'
-      # 接下來要寫入任何資料都是呼叫 writer.add_某功能()
-      self.dis_writer = SummaryWriter(os.path.join(config['save_dir'], 'dis')) 
-      self.gen_writer = SummaryWriter(os.path.join(config['save_dir'], 'gen'))
+   
+    # 建立實體。資料存放在：'save_path/dis(gen)'
+    # 接下來要寫入任何資料都是呼叫 writer.add_某功能()
+    self.dis_writer = SummaryWriter(os.path.join(config['save_dir'], 'dis')) 
+    self.gen_writer = SummaryWriter(os.path.join(config['save_dir'], 'gen'))
     self.train_args = self.config['trainer']
     
     net = importlib.import_module('model.'+config['model_name']) # 根據不同項目的配置，動態導入對應的模型
@@ -81,11 +66,6 @@ class Trainer():
     with open(self.log_name, "a") as log_file:
         now = time.strftime("%c")
         log_file.write('================ Training Loss (%s) ================\n' % now)
-    # if config['distributed']:
-    #   self.netG = DDP(self.netG, device_ids=[config['global_rank']], output_device=config['global_rank'], 
-    #                   broadcast_buffers=True, find_unused_parameters=False)
-    #   self.netD = DDP(self.netD, device_ids=[config['global_rank']], output_device=config['global_rank'], 
-    #                   broadcast_buffers=True, find_unused_parameters=False)
   
   # get current learning rate
   def get_lr(self, type='G'):
@@ -139,10 +119,8 @@ class Trainer():
     dis_path = os.path.join(self.config['save_dir'], 'dis_{}.pth'.format(str(it).zfill(5)))
     opt_path = os.path.join(self.config['save_dir'], 'opt_{}.pth'.format(str(it).zfill(5)))
     print('\nsaving model to {} ...'.format(gen_path))
-    if isinstance(self.netG, torch.nn.DataParallel) or isinstance(self.netG, DDP):
-      netG, netD = self.netG.module, self.netD.module 
-    else:
-      netG, netD = self.netG, self.netD
+    
+    netG, netD = self.netG, self.netD
     torch.save({'netG': netG.state_dict()}, gen_path)
     torch.save({'netD': netD.state_dict()}, dis_path)
     torch.save({'epoch': self.epoch, 
@@ -289,6 +267,7 @@ class Trainer():
   def train(self):
     while True: # opt.epoch_count default 1
       self.epoch += 1
+
       if self.epoch > self.train_args['epochs'] + 1:
         break
       self._train_epoch()

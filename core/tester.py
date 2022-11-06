@@ -243,7 +243,7 @@ class Tester():
         big_imgs_scores_max = np.append(big_imgs_scores_max, max_score)
         big_imgs_scores_mean = np.append(big_imgs_scores_mean, mean_score)
 
-    return big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, np.array(big_imgs_fn)
+    return big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, big_imgs_fn
 
   def test_position(self, df, n_mean=None, n_std=None):
     big_imgs_scores = None

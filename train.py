@@ -34,15 +34,27 @@ if __name__ == "__main__":
   
   # loading configs 
   config = json.load(open(args.config)) # dict
+
   if args.mask is not None:
     config['data_loader']['mask'] = args.mask # square
   if args.size is not None:
     config['data_loader']['w'] = config['data_loader']['h'] = args.size # 512
+  if args.train_path is not None:
+    config['data_loader']['train_data_root'] = args.train_path
+
+  if args.model_version is not None:
+    config['model']['version'] = args.model_version
+  if args.model_name is not None:  
+    config['model_name'] = args.model_name # pennet
+  if args.save_freq is not None:
+    config['trainer']['save_freq'] = args.save_freq
+  if args.epochs is not None:
+    config['trainer']['epochs'] = args.epochs
+
   if args.continue_train is not None:
-    config['data_loader']['continue'] = args.continue_train # 512
-  config['model_name'] = args.name # pennet
-  
-  gpu_device = 0
+    config['data_loader']['continue'] = args.continue_train
+
+  gpu_device = 1
  
   # 只使用單 GPU
   main_worker(gpu_device, config) # GPU device, GPU num, config
