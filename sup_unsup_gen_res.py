@@ -14,12 +14,7 @@ import torch.nn as nn
 from opt.option import get_test_parser
 from core.utils import set_seed
 from core.tester import Tester
-from core.utils_howard import mkdir, minmax_scaling, \
-                              get_data_info, make_test_dataloader, evaluate, get_line_threshold, \
-                              plot_score_distribution, plot_sup_unsup_scatter, plot_line_on_scatter, \
-                              sup_unsup_prediction_spec_th, sup_unsup_prediction_spec_multi_th, \
-                              sup_unsup_prediction_auto_th, sup_unsup_prediction_auto_multi_th, sup_unsup_svm, \
-                              sup_prediction_spec_th, get_value_threshold
+from core.utils_howard import mkdir, get_data_info, make_test_dataloader, evaluate
 
 args = get_test_parser()
 
@@ -102,14 +97,14 @@ def export_conf_score(conf_sup, score_unsup, path):
   sup_name = conf_sup['files_res']['all']
   sup_conf = np.concatenate([conf_sup['preds_res']['n'], conf_sup['preds_res']['s']])
   sup_label = [0]*len(conf_sup['preds_res']['n'])+[1]*len(conf_sup['preds_res']['s'])
-  df_sup = pd.DataFrame(list(zip(sup_name,sup_conf,sup_label)), columns=['name', 'score', 'label'])
-  df_sup.to_csv(os.path.join(path, 'sup_conf.csv'))
+  df_sup = pd.DataFrame(list(zip(sup_name,sup_conf,sup_label)), columns=['name', 'conf', 'label'])
+  df_sup.to_csv(os.path.join(path, 'sup_conf.csv'), index=False)
 
   unsup_name = res_unsup['fn']['n'] + res_unsup['fn']['s']
   unsup_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
   unsup_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
   df_unsup = pd.DataFrame(list(zip(unsup_name,unsup_score,unsup_label)), columns=['name', 'score', 'label'])
-  df_unsup.to_csv(os.path.join(path, 'unsup_score.csv'))
+  df_unsup.to_csv(os.path.join(path, 'unsup_score.csv'), index=False)
   
   print("save conf score finished!")
 
@@ -171,39 +166,7 @@ def unsupervised_model_prediction(config):
       res_unsup['mean']['s'] = big_imgs_scores_mean.copy() # mean
       res_unsup['fn']['s'] = big_imgs_fn
 
-      # 找特例
-      # print(res_unsup['mean']['n'].max())
-      # print(res_unsup['mean']['n'].argmax())
-      # print(res_unsup['fn']['n'][res_unsup['mean']['n'].argmax()])
   return res_unsup
-
-# save time use
-def model_prediction_using_record(config):
-  res_sup = defaultdict(dict)
-  for l in ['preds_res','labels_res','files_res']:
-    for t in ['n', 's']:
-      res_sup[l][t] = None
-
-  res_unsup = defaultdict(dict)
-  for l in ['all','max','mean']:
-    for t in ['n','s']:
-      res_unsup[l][t] = None
-
-  all_conf_sup = np.loadtxt(os.path.join(config['result_path'], 'conf_log.txt'))
-  res_sup['preds_res']['n'] = all_conf_sup[:config['data_loader']['normal_num']]
-  res_sup['preds_res']['s'] = all_conf_sup[config['data_loader']['normal_num']:]
-  
-  if config['pos_normalized']:
-    unsup_score_type = 'max'
-  else:
-    unsup_score_type = 'mean'
-
-  all_score_unsup = np.loadtxt(os.path.join(config['result_path'], 'score_log.txt'))
-  res_unsup[unsup_score_type]['n'] = all_score_unsup[:config['data_loader']['normal_num']]
-  res_unsup[unsup_score_type]['s'] = all_score_unsup[config['data_loader']['normal_num']:]
-  print(res_unsup[unsup_score_type]['n'].shape[0])
-
-  return res_sup, res_unsup
 
 if __name__ == '__main__':
   
@@ -215,6 +178,6 @@ if __name__ == '__main__':
   
   # ===== unsupervised =====
   res_unsup = unsupervised_model_prediction(config)
-
+  
   export_conf_score(res_sup, res_unsup, config['result_path']) # 記錄下來，防止每次都要重跑
   

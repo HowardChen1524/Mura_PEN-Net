@@ -17,7 +17,7 @@ from core.utils_howard import mkdir, minmax_scaling, \
                               plot_score_distribution, plot_sup_unsup_scatter, plot_line_on_scatter, \
                               sup_unsup_prediction_spec_th, sup_unsup_prediction_spec_multi_th, \
                               sup_unsup_prediction_auto_th, sup_unsup_prediction_auto_multi_th, sup_unsup_svm, \
-                              sup_prediction_spec_th, get_value_threshold
+                              sup_prediction_spec_th, get_value_threshold, find_sup_th
 
 args = get_test_parser()
 
@@ -114,12 +114,11 @@ def show_and_save_result(conf_sup, score_unsup, minmax, use_th, path, name):
     unsup_s_mean = np.mean(score_unsup['score']['s'])
     unsup_s_std = np.std(score_unsup['score']['s'])
 
-    if minmax:
-        all_score_unsup = minmax_scaling(all_score_unsup)
-        score_unsup['score']['n'] =  all_score_unsup[:len(score_unsup['score']['n'])]
-        score_unsup['score']['s'] =  all_score_unsup[len(score_unsup['score']['n']):]
+    # if minmax:
+    #     all_score_unsup = minmax_scaling(all_score_unsup)
+    #     score_unsup['score']['n'] =  all_score_unsup[:len(score_unsup['score']['n'])]
+    #     score_unsup['score']['s'] =  all_score_unsup[len(score_unsup['score']['n']):]
 
-    plot_score_distribution(conf_sup['conf']['n'], conf_sup['conf']['s'], path, f"{name}_sup")
     plot_score_distribution(score_unsup['score']['n'], score_unsup['score']['s'], path, f"{name}_unsup")
     plot_sup_unsup_scatter(conf_sup, score_unsup, path, name)
 
@@ -143,15 +142,35 @@ def show_and_save_result(conf_sup, score_unsup, minmax, use_th, path, name):
             msg += f"=============== Combine both two lines ===================\n"
             msg += sup_unsup_prediction_spec_multi_th(true_label, all_conf_sup, all_score_unsup, two_line_th, path)
             log_file.write(msg)
-        plot_line_on_scatter(conf_sup, score_unsup, path)
     else:
+        sup_res = find_sup_th(conf_sup, path)
         # ===== Auto find threshold line =====
-        one_line_time = sup_unsup_prediction_auto_th(true_label, all_conf_sup, all_score_unsup, path)
-        two_line_time = sup_unsup_prediction_auto_multi_th(true_label, all_conf_sup, all_score_unsup, path)
+        one_res, one_line_time = sup_unsup_prediction_auto_th(true_label, all_conf_sup, all_score_unsup, path)
+        two_res, two_line_time = sup_unsup_prediction_auto_multi_th(true_label, all_conf_sup, all_score_unsup, path)
         sup_unsup_svm(true_label, all_conf_sup, all_score_unsup, path)
-        plot_line_on_scatter(conf_sup, score_unsup, path)
-        print(one_line_time)
-        print(two_line_time)
+        log_name = os.path.join(path, f'{result_name}_find_th_log.txt')
+        msg = ''
+        with open(log_name, "w") as log_file:
+            msg += f"=============== supervised ===================\n"
+            msg += f"tnr0.996 recall: {sup_res['tnr0.996_recall']}\n"
+            msg += f"tnr0.996 precision: {sup_res['tnr0.996_precision']}\n"
+            msg += f"tnr0.998 recall: {sup_res['tnr0.998_recall']}\n"
+            msg += f"tnr0.998 precision: {sup_res['tnr0.998_precision']}\n"
+            msg += f"=============== one line ===================\n"
+            msg += f"one line time: {one_line_time}\n"
+            msg += f"tnr0.996 recall: {one_res['tnr0.996_recall']}\n"
+            msg += f"tnr0.996 precision: {one_res['tnr0.996_precision']}\n"
+            msg += f"tnr0.998 recall: {one_res['tnr0.998_recall']}\n"
+            msg += f"tnr0.998 precision: {one_res['tnr0.998_precision']}\n"
+            msg += f"=============== two line ===================\n"
+            msg += f"two line time: {two_line_time}\n"
+            msg += f"tnr0.996 recall: {two_res['tnr0.996_recall']}\n"
+            msg += f"tnr0.996 precision: {two_res['tnr0.996_precision']}\n"
+            msg += f"tnr0.998 recall: {two_res['tnr0.998_recall']}\n"
+            msg += f"tnr0.998 precision: {two_res['tnr0.998_precision']}\n"
+            log_file.write(msg)
+
+    plot_line_on_scatter(conf_sup, score_unsup, path)
 
 def model_prediction_using_record(config):
     res_sup = defaultdict(dict)
@@ -173,13 +192,13 @@ def model_prediction_using_record(config):
     print(merge_df)
     
     # res_sup = defaultdict(dict)
-    for l, c in zip(['conf','labels','files'],['score_x','label_x','name']):
+    for l, c in zip(['conf','labels','files'],['conf','label_x','name']):
         for t, f in zip(['n', 's'],[normal_filter,smura_filter]):
             res_sup[l][t] = merge_df[c][f].tolist()
     print(res_sup['files']['n'][:10])
 
     # res_unsup = defaultdict(dict)
-    for l, c in zip(['score','labels','files'],['score_y','label_y','name']):
+    for l, c in zip(['score','labels','files'],['score','label_y','name']):
         for t, f in zip(['n', 's'],[normal_filter, smura_filter]):
             res_unsup[l][t] = merge_df[c][f].tolist()
     print(res_unsup['files']['n'][:10])
@@ -196,9 +215,9 @@ if __name__ == '__main__':
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}_with_seresnext101"
     show_and_save_result(res_sup, res_unsup, config['minmax'], config['using_threshold'], config['result_path'], result_name)
 
-    position = np.where(res_unsup['score']['s']>=0.4)
-    large_smura_name = np.array(res_unsup['files']['s'])[position]
-    position = np.where(res_unsup['score']['s']<0.4)
-    small_smura_name = np.array(res_unsup['files']['s'])[position]
-    count_data_version(large_smura_name, small_smura_name, config['data_loader']['csv_path'])
+    # position = np.where(res_unsup['score']['s']>=0.4)
+    # large_smura_name = np.array(res_unsup['files']['s'])[position]
+    # position = np.where(res_unsup['score']['s']<0.4)
+    # small_smura_name = np.array(res_unsup['files']['s'])[position]
+    # count_data_version(large_smura_name, small_smura_name, config['data_loader']['csv_path'])
     

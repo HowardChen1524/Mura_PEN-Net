@@ -61,7 +61,7 @@ class Trainer():
 
     self.one_epoch_iter = (len(self.train_dataset)*self.config['data_loader']['rand_crop_num']*1) // \
                           (self.config['data_loader']['rand_crop_num']*self.train_args["batch_size"])
-    
+    print(self.one_epoch_iter)
     self.log_name = os.path.join(self.config['save_dir'], 'loss_log.txt')
     with open(self.log_name, "a") as log_file:
         now = time.strftime("%c")
@@ -114,7 +114,6 @@ class Trainer():
 
   # save parameters every eval_epoch
   def save(self, it):
-    # if self.config['global_rank'] == 0:
     gen_path = os.path.join(self.config['save_dir'], 'gen_{}.pth'.format(str(it).zfill(5)))
     dis_path = os.path.join(self.config['save_dir'], 'dis_{}.pth'.format(str(it).zfill(5)))
     opt_path = os.path.join(self.config['save_dir'], 'opt_{}.pth'.format(str(it).zfill(5)))
@@ -167,13 +166,13 @@ class Trainer():
 
       # check training image
       check_img = tensor2im(torch.unsqueeze(images[0],0))
-      check_img.save(f"../ori.png")
+      check_img.save(f"./ori.png")
       
       check_img = tensor2im(torch.unsqueeze(pred_img[0],0))
-      check_img.save(f"../pred.png")
+      check_img.save(f"./pred.png")
 
       check_img = tensor2im(torch.unsqueeze(comp_img[0],0))
-      check_img.save(f"../comp.png")
+      check_img.save(f"./comp.png")
 
       self.add_summary(self.dis_writer, 'lr/dis_lr', self.get_lr(type='D'))
       self.add_summary(self.gen_writer, 'lr/gen_lr', self.get_lr(type='G'))
@@ -237,15 +236,9 @@ class Trainer():
         with open(self.log_name, "a") as log_file:
             log_file.write('%s\n' % message)
       # saving and evaluating
-      if iteration % (self.one_epoch_iter*self.train_args['save_freq']) == 0:
+      # if iteration % (self.one_epoch_iter*self.train_args['save_freq']) == 0:
+      if iteration % 5000 == 0:
         self.save(int(self.epoch))
-      # if self.total_iteration % self.train_args['valid_freq'] == 0:
-      #   self._test_epoch(int(self.total_iteration//self.train_args['save_freq']))
-      #   if self.config['global_rank'] == 0:
-      #     print('[**] Training till {} in Rank {}\n'.format(
-      #       datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), self.config['global_rank']))
-      # if self.total_iteration > self.config['trainer']['iterations']:
-      #   break
 
     self.schedulerG.step()
     self.schedulerD.step()

@@ -48,7 +48,7 @@ class AUO_Dataset(torch.utils.data.Dataset):
       else:
         recover_list = []
         recover_df = pd.read_csv('./training_imgs.csv')
-        data_df = pd.read_csv(r'/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv')
+        data_df = pd.read_csv(data_args['csv_path'])
         recover_fn = pd.merge(recover_df, data_df, on='PIC_ID', how='inner')['PIC_ID'].tolist()
         for fn in recover_fn:
             recover_list.append(f"{self.dir_A}{fn.replace('bmp','png')}")

@@ -206,7 +206,7 @@ def calc_matrix(labels_res, preds_res):
 
     model_report = pd.DataFrame(results)
     
-    return model_report, curve_df
+    return results, model_report, curve_df
     
 def get_data_info(t, l, image_info, data_dir, csv_path):
     res = []
@@ -233,7 +233,7 @@ def get_data_info(t, l, image_info, data_dir, csv_path):
 
     return dataset
 
-def evaluate(model, testloaders, save_path='./supervised_model/'):
+def evaluate(model, testloaders, save_path):
     model.eval().cuda()
     res = defaultdict(dict)
     for l in ['preds_res','labels_res','files_res']:
@@ -266,19 +266,21 @@ def evaluate(model, testloaders, save_path='./supervised_model/'):
     res['preds_res']['all'] = np.array(res['preds_res']['n'] + res['preds_res']['s'])
     res['labels_res']['all'] = np.array(res['labels_res']['n'] + res['labels_res']['s'])
     
-    model_pred_result = predict_report(res['preds_res']['all'], res['labels_res']['all'], res['files_res']['all'])
-    model_pred_result.to_csv(os.path.join(save_path, "sup_model_pred_result.csv"), index=None)
-    print("model predict record finished!")
+    calc_roc(res['labels_res']['all'], res['preds_res']['all'], save_path, "sup")
+    print("roc curve saved!")
 
-    # fig = plot_roc_curve_supervised(res['labels_res']['all'], res['preds_res']['all'])
-    # fig.savefig(os.path.join(save_path, "roc_curve.png"))
-    # calc_roc(res['labels_res']['all'], res['preds_res']['all'], save_path, "sup")
-    # print("roc curve saved!")
-  
-    # model_report, curve_df = calc_matrix(res['labels_res']['all'], res['preds_res']['all'])
-    # model_report.to_csv(os.path.join(save_path, "sup_model_report.csv"))
-    # curve_df.to_csv(os.path.join(save_path, "model_precision_recall_curve.csv"))
-    # print("model report record finished!")
+    return res
+
+def find_sup_th(res, save_path):
+    # model_pred_result = predict_report(res['preds_res']['all'], res['labels_res']['all'], res['files_res']['all'])
+    # model_pred_result.to_csv(os.path.join(save_path, "sup_model_pred_result.csv"), index=None)
+    # print("model predict record finished!")
+    all_label = res['labels']['n'] + res['labels']['s']
+    all_conf = res['conf']['n'] + res['conf']['s']
+    res, model_report, curve_df = calc_matrix(all_label, all_conf)
+    model_report.to_csv(os.path.join(save_path, "sup_model_report.csv"))
+    curve_df.to_csv(os.path.join(save_path, "sup_model_precision_recall_curve.csv"))
+    print("model report record finished!")
     return res
 # *****************************************************************
 
@@ -478,40 +480,45 @@ def sup_prediction_spec_th(labels, all_conf_sup, threshold, path):
 
 def sup_unsup_prediction_auto_th(labels, all_conf_sup, all_score_unsup, path):
     all_pr_res = []
-    # m 0(水平)~ -10 (100等分) -> 移項 mx + y = b
-    # b 0~1 (100等分)
+    # mx + y = b
+    # score 同乘 100000 3e-05 ~ 1.2e-04 -> 3~12
+    # m 0~-1 stride = 0.01 
+    # b 0~12 stride = 0.1
     start_time = time.time()
-    for m in range(0, 101, 1):
-      m = m/100
-      for b in range(1, 201, 1):
-        b = b/100
-        pred_labels = [] 
-        combined_scores = m*all_score_unsup + all_conf_sup
-        tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=(combined_scores >= b)).ravel()
-        tnr = tn / (tn + fp)
-        precision = tp / (tp + fp)
-        recall = tp / (tp + fn)
-        f1 = 2 * (precision * recall) / (precision + recall)
-        fpr = fp / (fp + tn)
-        if tnr >= 0.99:
-            all_pr_res.append([m, b, tnr, precision, recall, f1, fpr])
+    for times_m in range(0, 101, 1): # 次數
+        m = (1000)*times_m
+        for times_b in range(0, 1201, 1): # 次數      
+            b = (0.01)*times_b
+            combined_scores = m*all_score_unsup + all_conf_sup
+            tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=(combined_scores >= b)).ravel()
+            tnr = tn / (tn + fp)
+            precision = tp / (tp + fp)
+            recall = tp / (tp + fn)
+            f1 = 2 * (precision * recall) / (precision + recall)
+            fpr = fp / (fp + tn)
+            print(tnr)
+            if tnr >= 0.99:
+                all_pr_res.append([m, b, tnr, precision, recall, f1, fpr])
     total_time = time.time() - start_time
 
-    save_curve_and_report(all_pr_res, path)
-    return total_time
+    res = save_curve_and_report(all_pr_res, path)
+    return res, total_time
 
 def sup_unsup_prediction_auto_multi_th(labels, all_conf_sup, all_score_unsup, path):
     all_pr_res = []
     # one 垂直 one 斜線
-    # m 0(水平)~ -10 (stride 0.01) -> 移項 mx + y = b
-    # b 0.1~2
+    # mx + y = b
+    # score 同乘 100000 3e-05 ~ 1.2e-04 -> 3~12
+    # m 0~-1 stride = 0.01 
+    # b 3~12 stride = 0.1
+    # x axis score 0.000055~0.00007
     start_time = time.time()
-    for x in range(0, 101, 1):
-        x = x/100
-        for m in range(0, 101, 1):
-            m = m/100
-            for b in range(1, 201, 1):
-                b = b/100
+    for times_x in range(0, 16, 1): # 次數
+        x = 0.000055 + (times_x*0.000001)
+        for times_m in range(0, 101, 1): # 次數
+            m = (1000)*times_m
+            for times_b in range(0, 1201, 1): # 次數      
+                b = (0.01)*times_b
             
                 pred_labels = [] 
                 combined_scores = m*all_score_unsup + all_conf_sup
@@ -527,13 +534,15 @@ def sup_unsup_prediction_auto_multi_th(labels, all_conf_sup, all_score_unsup, pa
                 recall = tp / (tp + fn)
                 f1 = 2 * (precision * recall) / (precision + recall)
                 fpr = fp / (fp + tn)
+                print(tnr)
                 if tnr >= 0.99:
                     print(tnr)
                     all_pr_res.append([m, b, x, tnr, precision, recall, f1, fpr])
     total_time = time.time() - start_time
 
-    save_curve_and_report(all_pr_res, path, False)
-    return total_time
+    res = save_curve_and_report(all_pr_res, path, False)
+    return res, total_time
+
 def sup_unsup_svm(true_label, all_conf_sup, all_score_unsup, path):
     X = list(zip(all_score_unsup, all_conf_sup))
     y = true_label
@@ -688,19 +697,21 @@ def save_curve_and_report(all_pr_res, path, isOneline=True):
     else:
         model_report.to_csv(os.path.join(path, "model_report_multi.csv"))
     print("model report record finished!")
+    return results
 
 # draw image
 def plot_one_line(line, color):
     # mx + y = b 
-    # x = 1, y = b - m
+    # x = 1.2e-04, y = b - 1.2e-04m
     # y = 1, x = (b-y)/m
+    # y = 0, x = b/m
     slope, intercept = line
     if slope == 0:
-        x_vals = [0, 1]
+        x_vals = [0, 1.2e-04]
         y_vals = [intercept, intercept]
     else:
-        x_vals = [(intercept-1)/slope, 1]
-        y_vals = [1, intercept-(slope * 1)]
+        x_vals = [(intercept-1)/slope, intercept/slope]
+        y_vals = [1, 0]
     plt.plot(x_vals, y_vals, color=color)
 
 def plot_two_line(line, color):
@@ -709,11 +720,11 @@ def plot_two_line(line, color):
     # y = 1, x = (b-y)/m
     slope, intercept, x = line
     if slope == 0:
-        x_vals = [0, 1]
+        x_vals = [0, 1.2e-04]
         y_vals = [intercept, intercept]
     else:
-        x_vals = [(intercept-1)/slope, 1]
-        y_vals = [1, intercept-(slope * 1)]
+        x_vals = [(intercept-1)/slope, intercept/slope]
+        y_vals = [1, 0]
     plt.plot(x_vals, y_vals, color=color)
     # one vertical line x
     x_vertical = [x, x]
@@ -728,7 +739,8 @@ def plot_scatter(conf_sup, score_unsup):
     # smura
     s_x = score_unsup['score']['s']
     s_y = conf_sup['conf']['s']
-
+    plt.clf()
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -741,10 +753,18 @@ def plot_line_on_scatter(conf_sup, score_unsup, path):
     color_dict = {'tnr0.996':'#1f77b4','tnr0.998':'#ff7f0e'}
 
     # reading df to get slope and intercept
+    sup_line_th = get_value_threshold(path)
     one_line_th, two_line_th = get_line_threshold(path)
 
     # tnr 996 998 分開存
     for tnr in ['tnr0.996','tnr0.998']:
+        # sup line
+        sup_line = [0, sup_line_th[tnr]]
+        plot_scatter(conf_sup, score_unsup)
+        plot_one_line(sup_line, color_dict[tnr])
+        plt.savefig(f"{path}/sup_line_{tnr}_scatter.png")
+        plt.clf()
+
         # one line
         one_line = [one_line_th[tnr]['m'],one_line_th[tnr]['b']]
         plot_scatter(conf_sup, score_unsup)
@@ -760,6 +780,15 @@ def plot_line_on_scatter(conf_sup, score_unsup, path):
         plt.clf()
 
     # tnr 996 998 畫一起
+    # sup line
+    tnr996_sup_line = [0 ,sup_line_th['tnr0.996']]
+    tnr998_sup_line = [0 ,sup_line_th['tnr0.998']]
+    plot_scatter(conf_sup, score_unsup)
+    plot_one_line(tnr996_sup_line, color_dict['tnr0.996'])
+    plot_one_line(tnr998_sup_line, color_dict['tnr0.998'])
+    plt.savefig(f"{path}/sup_line_all_scatter.png")
+    plt.clf()
+
     # one line
     tnr996_one_line = [one_line_th['tnr0.996']['m'],one_line_th['tnr0.996']['b']]
     tnr998_one_line = [one_line_th['tnr0.998']['m'],one_line_th['tnr0.998']['b']]
@@ -776,6 +805,7 @@ def plot_line_on_scatter(conf_sup, score_unsup, path):
     plot_two_line(tnr996_two_line, color_dict['tnr0.996'])
     plot_two_line(tnr998_two_line, color_dict['tnr0.998'])
     plt.savefig(f"{path}/two_line_all_scatter.png")
+    plt.clf()
 
 def plot_roc_curve(roc_auc, fpr, tpr, path, name):
     plt.clf()
@@ -790,6 +820,7 @@ def plot_roc_curve(roc_auc, fpr, tpr, path, name):
 
 def plot_score_distribution(n_scores, s_scores, path, name):
     plt.clf()
+    plt.xlim(3e-05, 1.2e-04)
     plt.hist(n_scores, bins=50, alpha=0.5, density=True, label="normal")
     plt.hist(s_scores, bins=50, alpha=0.5, density=True, label="smura")
     plt.xlabel('Anomaly Score')
@@ -808,6 +839,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     # 設定座標軸
     # normal
     plt.clf()
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -817,6 +849,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     plt.clf()
     # smura
     plt.clf()
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -826,6 +859,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     plt.clf()
     # all
     plt.clf()
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -847,6 +881,7 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     # 設定座標軸
     # normal
     plt.clf()
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -854,6 +889,7 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     plt.savefig(f"{path}/{name}_normal_scatter.png")
     plt.clf()
     # smura
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -861,6 +897,7 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     plt.savefig(f"{path}/{name}_smura_scatter.png")
     plt.clf()
     # Both
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
