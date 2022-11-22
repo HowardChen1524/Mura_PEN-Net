@@ -1,17 +1,27 @@
 #!/bin/bash
 declare -a measure_list=(
+                        #  "MSE"
                          "Mask_MSE"
+                        #  "Discriminator"
+                        #  "Pyramid_L1"
                         )
 
-model_version="mura_d23_8k"
+model_version="d23_8k"
+# model_version="d23_4k"
 
+# d23 4k test
+# dataset_name="mura_d23_4k"
+# sup_data_path="/hcds_vol/private/howard/mura_data/d23_merge/" # for supervised model
+# sup_csv_path="/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv" # for supervised model
+# unsup_test_normal_path="/hcds_vol/private/howard/mura_data/d23_merge/test/test_normal_4k/" # for unsupervised model
+# unsup_test_smura_path="/hcds_vol/private/howard/mura_data/d23_merge/test/test_smura_4k/" # for unsupervised model
 
 # d23 8k test
-dataset_name="mura_d23_8k"
-sup_data_path="/hcds_vol/private/howard/mura_data/d23_merge/" # for supervised model
-sup_csv_path="/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv" # for supervised model
-unsup_test_normal_path="/hcds_vol/private/howard/mura_data/d23_merge/test/test_normal_8k/" # for unsupervised model
-unsup_test_smura_path="/hcds_vol/private/howard/mura_data/d23_merge/test/test_smura_8k/" # for unsupervised model
+# dataset_name="mura_d23_8k"
+# sup_data_path="/hcds_vol/private/howard/mura_data/d23_merge/" # for supervised model
+# sup_csv_path="/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv" # for supervised model
+# unsup_test_normal_path="/hcds_vol/private/howard/mura_data/d23_merge/test/test_normal_8k/" # for unsupervised model
+# unsup_test_smura_path="/hcds_vol/private/howard/mura_data/d23_merge/test/test_smura_8k/" # for unsupervised model
 
 # d24 d25 8k blind test
 # dataset_name="mura_d24_d25_8k"
@@ -30,9 +40,6 @@ unsup_test_smura_path="/hcds_vol/private/howard/mura_data/d23_merge/test/test_sm
 #     -mv $model_version \
 #     -mn pennet -m square -s 512 \
 #     -t normal -me 100 -as $measure \
-#     -mm \
-#     -dp $sup_data_path \
-#     -cp $sup_csv_path \
 #     -np $unsup_test_normal_path \
 #     -sp $unsup_test_smura_path
 # done

@@ -15,7 +15,7 @@ from core.utils_howard import mkdir, minmax_scaling, \
                               plot_score_distribution, plot_score_scatter, \
                               unsup_calc_metric, unsup_find_param_max_mean
 
-args = get_test_parser().parse_args()
+args = get_test_parser()
 
 def initail_setting(with_sup_model=False):
   
@@ -82,33 +82,33 @@ def initail_setting(with_sup_model=False):
 
   return config, gpu
 
-def export_score(score_max, score_mean, path):
-  log_name = os.path.join(path, 'score_max_log.txt')
-  np.savetxt(log_name, score_max, delimiter=",")
-  log_name = os.path.join(path, 'score_mean_log.txt')
-  np.savetxt(log_name, score_mean, delimiter=",")
+def export_score(score_unsup, path):
+  unsup_name = score_unsup['fn']['n'] + score_unsup['fn']['s']
+  unsup_label = [0]*len(score_unsup['mean']['n'])+[1]*len(score_unsup['mean']['s'])
 
-  print("save score finished!")
+  unsup_score_max = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
+  df_unsup_max = pd.DataFrame(list(zip(unsup_name,unsup_score_max,unsup_label)), columns=['name', 'score_max', 'label'])
+  df_unsup_max.to_csv(os.path.join(path, 'unsup_score_max.csv'), index=False)
+
+  unsup_score_mean = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
+  df_unsup_mean = pd.DataFrame(list(zip(unsup_name,unsup_score_mean,unsup_label)), columns=['name', 'score_mean', 'label'])
+  df_unsup_mean.to_csv(os.path.join(path, 'unsup_score_mean.csv'), index=False)
+
+  unsup_score_all = np.concatenate([score_unsup['all']['n'], score_unsup['all']['s']])
+  unsup_label_all = [0]*len(score_unsup['all']['n'])+[1]*len(score_unsup['all']['s'])
+  df_unsup_all = pd.DataFrame(list(zip(unsup_score_all,unsup_label_all)), columns=['score', 'label'])
+  df_unsup_all.to_csv(os.path.join(path, 'unsup_score_all.csv'), index=False)
+  
+  print("save conf score finished!")
 
 def show_and_save_result(score_unsup, minmax, path, name):
   all_max_anomaly_score = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
   all_mean_anomaly_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
-  true_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
-  
-  export_score(all_max_anomaly_score, all_mean_anomaly_score, path)
-
-  if minmax:
-    all_max_anomaly_score = minmax_scaling(all_max_anomaly_score)
-    score_unsup['max']['n'] =  all_max_anomaly_score[:score_unsup['max']['n'].shape[0]]
-    score_unsup['max']['s'] =  all_max_anomaly_score[score_unsup['max']['n'].shape[0]:]
-
-    all_mean_anomaly_score = minmax_scaling(all_mean_anomaly_score)
-    score_unsup['mean']['n'] =  all_mean_anomaly_score[:score_unsup['mean']['n'].shape[0]]
-    score_unsup['mean']['s'] =  all_mean_anomaly_score[score_unsup['mean']['n'].shape[0]:]
+  true_label = [0]*len(score_unsup['mean']['n'])+[1]*len(score_unsup['mean']['s'])
 
   plot_score_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
   plot_score_scatter(score_unsup['max']['n'], score_unsup['max']['s'], score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
-
+  
   log_name = os.path.join(path, 'result_log.txt')
   msg = ''
   with open(log_name, "w") as log_file:
@@ -199,15 +199,46 @@ def unsupervised_model_prediction_position(config):
   
   return res_unsup
 
+def model_prediction_using_record(config):
+    res_unsup = defaultdict(dict)
+    for l in ['max', 'mean', 'labels', 'fn']:
+        for t in ['n','s']:
+            res_unsup[l][t] = None
+
+    max_df = pd.read_csv(os.path.join(config['result_path'], 'unsup_score_max.csv'))
+    mean_df = pd.read_csv(os.path.join(config['result_path'], 'unsup_score_mean.csv'))
+    merge_df = max_df.merge(mean_df, left_on='name', right_on='name')
+    
+    normal_filter = (merge_df['label_x']==0) & (merge_df['label_y']==0)
+    smura_filter = (merge_df['label_x']==1) & (merge_df['label_y']==1)
+    for l, c in zip(['max', 'mean', 'labels', 'fn'],['score_max', 'score_mean', 'label_y','name']):
+        for t, f in zip(['n', 's'],[normal_filter, smura_filter]):
+            res_unsup[l][t] = merge_df[c][f].tolist()
+
+    all_df = pd.read_csv(os.path.join(config['result_path'], 'unsup_score_all.csv'))
+    normal_filter = (all_df['label']==0)
+    smura_filter = (all_df['label']==1)
+    res_unsup['all']['n'] = all_df['score'][normal_filter].tolist()
+    res_unsup['all']['s'] = all_df['score'][smura_filter].tolist()
+
+    return res_unsup
+
 if __name__ == '__main__':
   with_sup_model = False
   config, gpu = initail_setting(with_sup_model)  
   
   if config['test_type'] == 'normal':
-    res_unsup = unsupervised_model_prediction(config)
+    if config['using_record']:
+      res_unsup = model_prediction_using_record(config)
+    else:
+      res_unsup = unsupervised_model_prediction(config)
+      
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
     show_and_save_result(res_unsup, config['minmax'], config['result_path'], result_name)
-  
+
+    if not config['using_record']:
+      export_score(res_unsup, config['result_path'])
+
   elif config['test_type'] == 'position':
     res_unsup = unsupervised_model_prediction_position(config)
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"

@@ -100,7 +100,7 @@ def export_conf_score(conf_sup, score_unsup, path):
   df_sup = pd.DataFrame(list(zip(sup_name,sup_conf,sup_label)), columns=['name', 'conf', 'label'])
   df_sup.to_csv(os.path.join(path, 'sup_conf.csv'), index=False)
 
-  unsup_name = res_unsup['fn']['n'] + res_unsup['fn']['s']
+  unsup_name = score_unsup['fn']['n'] + score_unsup['fn']['s']
   unsup_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
   unsup_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
   df_unsup = pd.DataFrame(list(zip(unsup_name,unsup_score,unsup_label)), columns=['name', 'score', 'label'])
@@ -180,4 +180,6 @@ if __name__ == '__main__':
   res_unsup = unsupervised_model_prediction(config)
   
   export_conf_score(res_sup, res_unsup, config['result_path']) # 記錄下來，防止每次都要重跑
+
+
   

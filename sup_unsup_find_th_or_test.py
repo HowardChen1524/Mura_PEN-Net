@@ -17,7 +17,7 @@ from core.utils_howard import mkdir, minmax_scaling, \
                               plot_score_distribution, plot_sup_unsup_scatter, plot_line_on_scatter, \
                               sup_unsup_prediction_spec_th, sup_unsup_prediction_spec_multi_th, \
                               sup_unsup_prediction_auto_th, sup_unsup_prediction_auto_multi_th, sup_unsup_svm, \
-                              sup_prediction_spec_th, get_value_threshold, find_sup_th
+                              sup_prediction_spec_th, get_value_threshold, find_sup_th, sup_unsup_prediction_spec_th_manual
 
 args = get_test_parser()
 
@@ -107,7 +107,7 @@ def show_and_save_result(conf_sup, score_unsup, minmax, use_th, path, name):
 
     true_label = np.concatenate([conf_sup['labels']['n'], conf_sup['labels']['s']])
 
-    plot_score_distribution(score_unsup['score']['n'], score_unsup['score']['s'], path, f"{name}_unsup_no_minmax")
+    # plot_score_distribution(score_unsup['score']['n'], score_unsup['score']['s'], path, f"{name}_unsup_no_minmax")
     
     unsup_n_mean = np.mean(score_unsup['score']['n'])
     unsup_n_std = np.std(score_unsup['score']['n'])
@@ -126,7 +126,8 @@ def show_and_save_result(conf_sup, score_unsup, minmax, use_th, path, name):
         # ===== blind test =====
         value_th = get_value_threshold(path)
         one_line_th, two_line_th = get_line_threshold(path)
-        
+        spec_line_th = {"m":32000, "b":2.365}
+
         log_name = os.path.join(path, f'{result_name}_blind_test_result_log.txt')
         msg = ''
         with open(log_name, "w") as log_file:
@@ -141,6 +142,8 @@ def show_and_save_result(conf_sup, score_unsup, minmax, use_th, path, name):
             msg += sup_unsup_prediction_spec_th(true_label, all_conf_sup, all_score_unsup, one_line_th, path)
             msg += f"=============== Combine both two lines ===================\n"
             msg += sup_unsup_prediction_spec_multi_th(true_label, all_conf_sup, all_score_unsup, two_line_th, path)
+            msg += f"=============== Manual both one lines ===================\n"
+            msg += sup_unsup_prediction_spec_th_manual(true_label, all_conf_sup, all_score_unsup, spec_line_th, path)
             log_file.write(msg)
     else:
         sup_res = find_sup_th(conf_sup, path)
@@ -152,18 +155,24 @@ def show_and_save_result(conf_sup, score_unsup, minmax, use_th, path, name):
         msg = ''
         with open(log_name, "w") as log_file:
             msg += f"=============== supervised ===================\n"
+            msg += f"tnr0.987 recall: {sup_res['tnr0.987_recall']}\n"
+            msg += f"tnr0.987 precision: {sup_res['tnr0.987_precision']}\n"
             msg += f"tnr0.996 recall: {sup_res['tnr0.996_recall']}\n"
             msg += f"tnr0.996 precision: {sup_res['tnr0.996_precision']}\n"
             msg += f"tnr0.998 recall: {sup_res['tnr0.998_recall']}\n"
             msg += f"tnr0.998 precision: {sup_res['tnr0.998_precision']}\n"
             msg += f"=============== one line ===================\n"
             msg += f"one line time: {one_line_time}\n"
+            msg += f"tnr0.987 recall: {one_res['tnr0.987_recall']}\n"
+            msg += f"tnr0.987 precision: {one_res['tnr0.987_precision']}\n"
             msg += f"tnr0.996 recall: {one_res['tnr0.996_recall']}\n"
             msg += f"tnr0.996 precision: {one_res['tnr0.996_precision']}\n"
             msg += f"tnr0.998 recall: {one_res['tnr0.998_recall']}\n"
             msg += f"tnr0.998 precision: {one_res['tnr0.998_precision']}\n"
             msg += f"=============== two line ===================\n"
             msg += f"two line time: {two_line_time}\n"
+            msg += f"tnr0.987 recall: {two_res['tnr0.987_recall']}\n"
+            msg += f"tnr0.987 precision: {two_res['tnr0.987_precision']}\n"
             msg += f"tnr0.996 recall: {two_res['tnr0.996_recall']}\n"
             msg += f"tnr0.996 precision: {two_res['tnr0.996_precision']}\n"
             msg += f"tnr0.998 recall: {two_res['tnr0.998_recall']}\n"
@@ -203,6 +212,7 @@ def model_prediction_using_record(config):
             res_unsup[l][t] = merge_df[c][f].tolist()
     print(res_unsup['files']['n'][:10])
     
+    
     return res_sup, res_unsup
 
 if __name__ == '__main__':
@@ -214,10 +224,4 @@ if __name__ == '__main__':
 
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}_with_seresnext101"
     show_and_save_result(res_sup, res_unsup, config['minmax'], config['using_threshold'], config['result_path'], result_name)
-
-    # position = np.where(res_unsup['score']['s']>=0.4)
-    # large_smura_name = np.array(res_unsup['files']['s'])[position]
-    # position = np.where(res_unsup['score']['s']<0.4)
-    # small_smura_name = np.array(res_unsup['files']['s'])[position]
-    # count_data_version(large_smura_name, small_smura_name, config['data_loader']['csv_path'])
     

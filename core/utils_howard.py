@@ -157,6 +157,12 @@ def calc_metric(labels_res, pred_res, threshold):
 
 def calc_matrix(labels_res, preds_res):
     results = {
+                'tnr0.987_th': [],
+                'tnr0.987_tnr': [],
+                'tnr0.987_precision': [],
+                'tnr0.987_recall': [],
+                'tnr0.987_f1': [],
+                'tnr0.987_fpr': [],
                 'tnr0.996_th': [],
                 'tnr0.996_tnr': [],
                 'tnr0.996_precision': [],
@@ -172,19 +178,14 @@ def calc_matrix(labels_res, preds_res):
               }
 
     curve_df = get_curve_df(labels_res, preds_res)
-
-    # results['tnr0.996_tnr'].append((((curve_df[curve_df['tnr'] > 0.996].iloc[0]) + (curve_df[curve_df['tnr'] < 0.996].iloc[-1])) / 2).tnr)
-    # results['tnr0.996_recall'].append((((curve_df[curve_df['tnr'] > 0.996].iloc[0]) + (curve_df[curve_df['tnr'] < 0.996].iloc[-1])) / 2).recall)
-    # results['tnr0.996_precision'].append((((curve_df[curve_df['tnr'] > 0.996].iloc[0]) + (curve_df[curve_df['tnr'] < 0.996].iloc[-1])) / 2).precision)
-    # results['tnr0.996_f1'].append((((curve_df[curve_df['tnr'] > 0.996].iloc[0]) + (curve_df[curve_df['tnr'] < 0.996].iloc[-1])) / 2).f1)
-    # results['tnr0.996_fpr'].append((((curve_df[curve_df['tnr'] > 0.996].iloc[0]) + (curve_df[curve_df['tnr'] < 0.996].iloc[-1])) / 2).fpr)
-
-    # results['tnr0.998_tnr'].append((((curve_df[curve_df['tnr'] > 0.998].iloc[0]) + (curve_df[curve_df['tnr'] < 0.998].iloc[-1])) / 2).tnr)
-    # results['tnr0.998_recall'].append((((curve_df[curve_df['tnr'] > 0.998].iloc[0]) + (curve_df[curve_df['tnr'] < 0.998].iloc[-1])) / 2).recall)
-    # results['tnr0.998_precision'].append((((curve_df[curve_df['tnr'] > 0.998].iloc[0]) + (curve_df[curve_df['tnr'] < 0.998].iloc[-1])) / 2).precision)
-    # results['tnr0.998_f1'].append((((curve_df[curve_df['tnr'] > 0.998].iloc[0]) + (curve_df[curve_df['tnr'] < 0.998].iloc[-1])) / 2).f1)
-    # results['tnr0.998_fpr'].append((((curve_df[curve_df['tnr'] > 0.998].iloc[0]) + (curve_df[curve_df['tnr'] < 0.998].iloc[-1])) / 2).fpr)
     
+    results['tnr0.987_th'].append((curve_df[curve_df['tnr'] > 0.987].iloc[0]).threshold)
+    results['tnr0.987_tnr'].append((curve_df[curve_df['tnr'] > 0.987].iloc[0]).tnr)
+    results['tnr0.987_recall'].append((curve_df[curve_df['tnr'] > 0.987].iloc[0]).recall)
+    results['tnr0.987_precision'].append((curve_df[curve_df['tnr'] > 0.987].iloc[0]).precision)
+    results['tnr0.987_f1'].append((curve_df[curve_df['tnr'] > 0.987].iloc[0]).f1)
+    results['tnr0.987_fpr'].append((curve_df[curve_df['tnr'] > 0.987].iloc[0]).fpr)
+
     results['tnr0.996_th'].append((curve_df[curve_df['tnr'] > 0.996].iloc[0]).threshold)
     results['tnr0.996_tnr'].append((curve_df[curve_df['tnr'] > 0.996].iloc[0]).tnr)
     results['tnr0.996_recall'].append((curve_df[curve_df['tnr'] > 0.996].iloc[0]).recall)
@@ -210,7 +211,8 @@ def calc_matrix(labels_res, preds_res):
     
 def get_data_info(t, l, image_info, data_dir, csv_path):
     res = []
-    image_info = image_info[(image_info["train_type"] == t) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850MVR05")]
+    image_info = image_info[(image_info["train_type"] == t) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850QVN03")]
+    # image_info = image_info[(image_info["train_type"] == t) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850MVR05")]
     # image_info = image_info[(image_info["batch"] >= 24) & (image_info["batch"] <= 25) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850MVR05")]
 
     for path, img, label, JND, t in zip(image_info["path"],image_info["name"],image_info["label"],image_info["MULTI_JND"],image_info["train_type"]):
@@ -230,7 +232,7 @@ def get_data_info(t, l, image_info, data_dir, csv_path):
                           name=N,
                           transform=data_transforms[t])
     # print(dataset.__len__())
-
+    
     return dataset
 
 def evaluate(model, testloaders, save_path):
@@ -381,7 +383,7 @@ def unsup_find_param_max_mean(labels, max_scores, mean_scores, path, name):
 def sup_unsup_prediction_spec_th(labels, all_conf_sup, all_score_unsup, threshold, path):
     result_msg = ''
 
-    th_list = [threshold['tnr0.996'], threshold['tnr0.998']]  
+    th_list = [threshold['tnr0.987'], threshold['tnr0.996'], threshold['tnr0.998']]  
     for th in th_list:
         pred_labels = [] 
         combined_scores = th['m']*all_score_unsup + all_conf_sup
@@ -415,7 +417,7 @@ def sup_unsup_prediction_spec_th(labels, all_conf_sup, all_score_unsup, threshol
 def sup_unsup_prediction_spec_multi_th(labels, all_conf_sup, all_score_unsup, threshold, path):
     result_msg = ''
 
-    th_list = [threshold['tnr0.996'], threshold['tnr0.998']] 
+    th_list = [threshold['tnr0.987'], threshold['tnr0.996'], threshold['tnr0.998']] 
     for th in th_list:
         pred_labels = [] 
 
@@ -453,7 +455,7 @@ def sup_unsup_prediction_spec_multi_th(labels, all_conf_sup, all_score_unsup, th
 def sup_prediction_spec_th(labels, all_conf_sup, threshold, path):
     result_msg = ''
 
-    th_list = [threshold['tnr0.996'], threshold['tnr0.998']]  
+    th_list = [threshold['tnr0.987'], threshold['tnr0.996'], threshold['tnr0.998']]  
     for th in th_list:
         cm = confusion_matrix(labels, (all_conf_sup >= th))
         #[[TN,FP]
@@ -478,6 +480,37 @@ def sup_prediction_spec_th(labels, all_conf_sup, threshold, path):
 
     return result_msg
 
+def sup_unsup_prediction_spec_th_manual(labels, all_conf_sup, all_score_unsup, th, path):
+    result_msg = ''
+    pred_labels = [] 
+    combined_scores = th['m']*all_score_unsup + all_conf_sup
+    for score in combined_scores:
+        if score >= th['b']:
+            pred_labels.append(1)
+        else:
+            pred_labels.append(0)
+
+    cm = confusion_matrix(labels, pred_labels)
+    TP = cm[1][1]
+    FP = cm[0][1]
+    FN = cm[1][0]
+    TN = cm[0][0]
+    DATA_NUM = TN + FP + FN + TP
+    
+    result_msg += f"Confusion Matrix (row1: TN,FP | row2: FN,TP):\n{cm}"
+    result_msg += f"\nThreshold line: m:{th['m']}, b:{th['b']}\n"
+    result_msg += f"Accuracy: {(TP + TN)/DATA_NUM}\n"
+    result_msg += f"Recall (TPR): {TP/(TP+FN)}\n"
+    result_msg += f"TNR: {TN/(FP+TN)}\n"
+    result_msg += f"Precision (PPV): {TP/(TP+FP)}\n"
+    result_msg += f"NPV: {TN/(FN+TN)}\n"
+    result_msg += f"False Alarm Rate (FPR): {FP/(FP+TN)}\n"
+    result_msg += f"Leakage Rate (FNR): {FN/(FN+TP)}\n"
+    result_msg += f"F1-Score: {f1_score(labels, pred_labels)}\n" # sklearn ver: F1 = 2 * (precision * recall) / (precision + recall)
+    result_msg += f"===================================\n"
+
+    return result_msg
+
 def sup_unsup_prediction_auto_th(labels, all_conf_sup, all_score_unsup, path):
     all_pr_res = []
     # mx + y = b
@@ -497,7 +530,7 @@ def sup_unsup_prediction_auto_th(labels, all_conf_sup, all_score_unsup, path):
             f1 = 2 * (precision * recall) / (precision + recall)
             fpr = fp / (fp + tn)
             print(tnr)
-            if tnr >= 0.99:
+            if tnr >= 0.987:
                 all_pr_res.append([m, b, tnr, precision, recall, f1, fpr])
     total_time = time.time() - start_time
 
@@ -513,7 +546,7 @@ def sup_unsup_prediction_auto_multi_th(labels, all_conf_sup, all_score_unsup, pa
     # b 3~12 stride = 0.1
     # x axis score 0.000055~0.00007
     start_time = time.time()
-    for times_x in range(0, 16, 1): # 次數
+    for times_x in range(0, 9, 1): # 次數
         x = 0.000055 + (times_x*0.000001)
         for times_m in range(0, 101, 1): # 次數
             m = (1000)*times_m
@@ -535,7 +568,7 @@ def sup_unsup_prediction_auto_multi_th(labels, all_conf_sup, all_score_unsup, pa
                 f1 = 2 * (precision * recall) / (precision + recall)
                 fpr = fp / (fp + tn)
                 print(tnr)
-                if tnr >= 0.99:
+                if tnr >= 0.987:
                     print(tnr)
                     all_pr_res.append([m, b, x, tnr, precision, recall, f1, fpr])
     total_time = time.time() - start_time
@@ -584,20 +617,25 @@ def get_line_threshold(path):
     two_line_df = pd.read_csv(os.path.join(path, 'model_report_multi.csv'))
     
     one_line_th = defaultdict(dict)
-    for tnr in ['tnr0.996','tnr0.998']:
+    for tnr in ['tnr0.987', 'tnr0.996','tnr0.998']:
         for l in ['m', 'b']:
             one_line_th[tnr][l] = None
 
+    one_line_th['tnr0.987']['m'] = one_line_df['tnr0.987_slope'].values[0]
+    one_line_th['tnr0.987']['b'] = one_line_df['tnr0.987_threshold'].values[0]
     one_line_th['tnr0.996']['m'] = one_line_df['tnr0.996_slope'].values[0]
     one_line_th['tnr0.996']['b'] = one_line_df['tnr0.996_threshold'].values[0]
     one_line_th['tnr0.998']['m'] = one_line_df['tnr0.998_slope'].values[0]
     one_line_th['tnr0.998']['b'] = one_line_df['tnr0.998_threshold'].values[0]
 
     two_line_th = defaultdict(dict)
-    for tnr in ['tnr0.996','tnr0.998']:
+    for tnr in ['tnr0.987', 'tnr0.996','tnr0.998']:
         for l in ['m','b','x']:
             two_line_th[tnr][l] = None
 
+    two_line_th['tnr0.987']['m'] = two_line_df['tnr0.987_slope'].values[0]
+    two_line_th['tnr0.987']['b'] = two_line_df['tnr0.987_threshold'].values[0]
+    two_line_th['tnr0.987']['x'] = two_line_df['tnr0.987_x'].values[0]
     two_line_th['tnr0.996']['m'] = two_line_df['tnr0.996_slope'].values[0]
     two_line_th['tnr0.996']['b'] = two_line_df['tnr0.996_threshold'].values[0]
     two_line_th['tnr0.996']['x'] = two_line_df['tnr0.996_x'].values[0]
@@ -611,9 +649,10 @@ def get_value_threshold(path):
     value_df = pd.read_csv(os.path.join(path, 'sup_model_report.csv'))
     
     value_th = defaultdict(dict)
-    for tnr in ['tnr0.996','tnr0.998']:
+    for tnr in ['tnr0.987', 'tnr0.996','tnr0.998']:
         value_th[tnr] = None
 
+    value_th['tnr0.987'] = value_df['tnr0.987_th'].values[0]
     value_th['tnr0.996'] = value_df['tnr0.996_th'].values[0]
     value_th['tnr0.998'] = value_df['tnr0.998_th'].values[0]
 
@@ -625,6 +664,13 @@ def save_curve_and_report(all_pr_res, path, isOneline=True):
         curve_df.to_csv(os.path.join(path, "model_curve.csv"), index=False)
         print("model curve record finished!")
         results = {
+                'tnr0.987_slope': [],
+                'tnr0.987_threshold': [],
+                'tnr0.987_tnr': [],
+                'tnr0.987_precision': [],
+                'tnr0.987_recall': [],
+                'tnr0.987_f1': [],
+                'tnr0.987_fpr': [],
                 'tnr0.996_slope': [],
                 'tnr0.996_threshold': [],
                 'tnr0.996_tnr': [],
@@ -645,6 +691,14 @@ def save_curve_and_report(all_pr_res, path, isOneline=True):
         curve_df.to_csv(os.path.join(path, "model_curve_multi.csv"), index=False)
         print("model curve record finished!")
         results = {
+                'tnr0.987_slope': [],
+                'tnr0.987_threshold': [],
+                'tnr0.987_x': [],
+                'tnr0.987_tnr': [],
+                'tnr0.987_precision': [],
+                'tnr0.987_recall': [],
+                'tnr0.987_f1': [],
+                'tnr0.987_fpr': [],
                 'tnr0.996_slope': [],
                 'tnr0.996_threshold': [],
                 'tnr0.996_x': [],
@@ -663,28 +717,43 @@ def save_curve_and_report(all_pr_res, path, isOneline=True):
                 'tnr0.998_fpr': [],
                 }
     
-    tnr996_best_recall_pos = curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].recall.argmax()
-    tnr998_best_recall_pos = curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].recall.argmax()
-    
+    tnr987_best_recall_pos = curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].recall.argmax()
+    tnr996_best_recall_pos = curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].recall.argmax()
+    tnr998_best_recall_pos = curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].recall.argmax()
+
+    print(curve_df.head(10))
+    print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].head())
+    print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].recall.argmax())
+    print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos].x)
+
     if not isOneline:
-        results['tnr0.996_x'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).x)
-        results['tnr0.998_x'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).x)
+        results['tnr0.987_x'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).x)
+        results['tnr0.996_x'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).x)
+        results['tnr0.998_x'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).x)
 
-    results['tnr0.996_slope'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).slope)
-    results['tnr0.996_threshold'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).threshold)
-    results['tnr0.996_tnr'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).tnr)
-    results['tnr0.996_recall'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).recall)
-    results['tnr0.996_precision'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).precision)
-    results['tnr0.996_f1'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).f1)
-    results['tnr0.996_fpr'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.9965)].iloc[tnr996_best_recall_pos]).fpr)
+    results['tnr0.987_slope'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).slope)
+    results['tnr0.987_threshold'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).threshold)
+    results['tnr0.987_tnr'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).tnr)
+    results['tnr0.987_recall'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).recall)
+    results['tnr0.987_precision'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).precision)
+    results['tnr0.987_f1'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).f1)
+    results['tnr0.987_fpr'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).fpr)
 
-    results['tnr0.998_slope'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).slope)
-    results['tnr0.998_threshold'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).threshold)
-    results['tnr0.998_tnr'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).tnr)
-    results['tnr0.998_recall'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).recall)
-    results['tnr0.998_precision'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).precision)
-    results['tnr0.998_f1'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).f1)
-    results['tnr0.998_fpr'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.9985)].iloc[tnr998_best_recall_pos]).fpr)
+    results['tnr0.996_slope'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).slope)
+    results['tnr0.996_threshold'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).threshold)
+    results['tnr0.996_tnr'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).tnr)
+    results['tnr0.996_recall'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).recall)
+    results['tnr0.996_precision'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).precision)
+    results['tnr0.996_f1'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).f1)
+    results['tnr0.996_fpr'].append((curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].iloc[tnr996_best_recall_pos]).fpr)
+
+    results['tnr0.998_slope'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).slope)
+    results['tnr0.998_threshold'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).threshold)
+    results['tnr0.998_tnr'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).tnr)
+    results['tnr0.998_recall'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).recall)
+    results['tnr0.998_precision'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).precision)
+    results['tnr0.998_f1'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).f1)
+    results['tnr0.998_fpr'].append((curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].iloc[tnr998_best_recall_pos]).fpr)
     
     # fill empty slot
     for k, v in results.items():
@@ -726,7 +795,7 @@ def plot_two_line(line, color):
         x_vals = [(intercept-1)/slope, intercept/slope]
         y_vals = [1, 0]
     plt.plot(x_vals, y_vals, color=color)
-    # one vertical line x
+    # one vertical line x # horizon
     x_vertical = [x, x]
     y_vertical = [1, 0]
     plt.plot(x_vertical, y_vertical, color=color)
@@ -740,7 +809,8 @@ def plot_scatter(conf_sup, score_unsup):
     s_x = score_unsup['score']['s']
     s_y = conf_sup['conf']['s']
     plt.clf()
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -750,14 +820,24 @@ def plot_scatter(conf_sup, score_unsup):
 def plot_line_on_scatter(conf_sup, score_unsup, path):
     # 996 : blue
     # 998 : orange
-    color_dict = {'tnr0.996':'#1f77b4','tnr0.998':'#ff7f0e'}
+    color_dict = {'tnr0.987':'#2ca02c', 'tnr0.996':'#1f77b4','tnr0.998':'#ff7f0e'}
 
     # reading df to get slope and intercept
     sup_line_th = get_value_threshold(path)
     one_line_th, two_line_th = get_line_threshold(path)
 
+    # manual line
+    manual_line = [32000, 2.365]
+    sup_line = [0, sup_line_th['tnr0.987']]
+    plot_scatter(conf_sup, score_unsup)
+    plot_one_line(manual_line, color_dict['tnr0.987'])
+    plot_one_line(sup_line, color_dict['tnr0.987'])
+    plt.savefig(f"{path}/manual_line_scatter.png")
+    plt.clf()
+
+
     # tnr 996 998 分開存
-    for tnr in ['tnr0.996','tnr0.998']:
+    for tnr in ['tnr0.987', 'tnr0.996','tnr0.998']:
         # sup line
         sup_line = [0, sup_line_th[tnr]]
         plot_scatter(conf_sup, score_unsup)
@@ -779,29 +859,35 @@ def plot_line_on_scatter(conf_sup, score_unsup, path):
         plt.savefig(f"{path}/two_line_{tnr}_scatter.png")
         plt.clf()
 
-    # tnr 996 998 畫一起
+    # tnr 990 996 998 畫一起
     # sup line
+    tnr987_sup_line = [0 ,sup_line_th['tnr0.987']]
     tnr996_sup_line = [0 ,sup_line_th['tnr0.996']]
     tnr998_sup_line = [0 ,sup_line_th['tnr0.998']]
     plot_scatter(conf_sup, score_unsup)
+    plot_one_line(tnr987_sup_line, color_dict['tnr0.987'])
     plot_one_line(tnr996_sup_line, color_dict['tnr0.996'])
     plot_one_line(tnr998_sup_line, color_dict['tnr0.998'])
     plt.savefig(f"{path}/sup_line_all_scatter.png")
     plt.clf()
 
     # one line
+    tnr987_one_line = [one_line_th['tnr0.987']['m'],one_line_th['tnr0.987']['b']]
     tnr996_one_line = [one_line_th['tnr0.996']['m'],one_line_th['tnr0.996']['b']]
     tnr998_one_line = [one_line_th['tnr0.998']['m'],one_line_th['tnr0.998']['b']]
     plot_scatter(conf_sup, score_unsup)
+    plot_one_line(tnr987_one_line, color_dict['tnr0.987'])
     plot_one_line(tnr996_one_line, color_dict['tnr0.996'])
     plot_one_line(tnr998_one_line, color_dict['tnr0.998'])
     plt.savefig(f"{path}/one_line_all_scatter.png")
     plt.clf()
 
     # two line
+    tnr987_two_line = [two_line_th['tnr0.987']['m'],two_line_th['tnr0.987']['b'],two_line_th['tnr0.987']['x']]
     tnr996_two_line = [two_line_th['tnr0.996']['m'],two_line_th['tnr0.996']['b'],two_line_th['tnr0.996']['x']]
     tnr998_two_line = [two_line_th['tnr0.998']['m'],two_line_th['tnr0.998']['b'],two_line_th['tnr0.998']['x']]
     plot_scatter(conf_sup, score_unsup)
+    plot_two_line(tnr987_two_line, color_dict['tnr0.987'])
     plot_two_line(tnr996_two_line, color_dict['tnr0.996'])
     plot_two_line(tnr998_two_line, color_dict['tnr0.998'])
     plt.savefig(f"{path}/two_line_all_scatter.png")
@@ -820,7 +906,7 @@ def plot_roc_curve(roc_auc, fpr, tpr, path, name):
 
 def plot_score_distribution(n_scores, s_scores, path, name):
     plt.clf()
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
     plt.hist(n_scores, bins=50, alpha=0.5, density=True, label="normal")
     plt.hist(s_scores, bins=50, alpha=0.5, density=True, label="smura")
     plt.xlabel('Anomaly Score')
@@ -839,7 +925,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     # 設定座標軸
     # normal
     plt.clf()
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -849,7 +935,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     plt.clf()
     # smura
     plt.clf()
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -859,7 +945,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     plt.clf()
     # all
     plt.clf()
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -881,7 +967,8 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     # 設定座標軸
     # normal
     plt.clf()
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -889,7 +976,8 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     plt.savefig(f"{path}/{name}_normal_scatter.png")
     plt.clf()
     # smura
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -897,7 +985,8 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     plt.savefig(f"{path}/{name}_smura_scatter.png")
     plt.clf()
     # Both
-    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
