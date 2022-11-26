@@ -11,7 +11,7 @@ import torch
 from opt.option import get_test_parser
 from core.utils import set_seed
 from core.tester import Tester
-from core.utils_howard import mkdir, minmax_scaling, \
+from core.utils_howard import mkdir, \
                               plot_score_distribution, plot_score_scatter, \
                               unsup_calc_metric, unsup_find_param_max_mean
 
@@ -37,6 +37,12 @@ def initail_setting(with_sup_model=False):
   if args.dataset_name is not None:
     config['data_loader']['name'] = args.dataset_name
 
+  if args.normal_num is not None:
+    config['data_loader']['test_normal_num'] = args.normal_num
+  
+  if args.smura_num is not None:
+    config['data_loader']['test_smura_num'] = args.smura_num
+    
   # ===== model setting =====
   config['model_name'] = args.model_name
       
@@ -48,7 +54,6 @@ def initail_setting(with_sup_model=False):
   config['test_type'] = args.test_type
   config['anomaly_score'] = args.anomaly_score
   config['pos_normalized'] = args.pos_normalized
-  config['minmax'] = args.minmax
   config['using_record'] = args.using_record
 
   # ===== Path setting =====
@@ -101,15 +106,32 @@ def export_score(score_unsup, path):
   
   print("save conf score finished!")
 
-def show_and_save_result(score_unsup, minmax, path, name):
-  all_max_anomaly_score = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
-  all_mean_anomaly_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
-  true_label = [0]*len(score_unsup['mean']['n'])+[1]*len(score_unsup['mean']['s'])
+def show_and_save_result(score_unsup, path, name):
+  # all_max_anomaly_score = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
+  # all_mean_anomaly_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
+  # true_label = [0]*len(score_unsup['mean']['n'])+[1]*len(score_unsup['mean']['s'])
 
-  plot_score_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
-  plot_score_scatter(score_unsup['max']['n'], score_unsup['max']['s'], score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
+  # plot_score_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
+  # plot_score_scatter(score_unsup['max']['n'], score_unsup['max']['s'], score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
   
-  log_name = os.path.join(path, 'result_log.txt')
+  # log_name = os.path.join(path, 'result_log.txt')
+  # msg = ''
+  # with open(log_name, "w") as log_file:
+  #   msg += f"=============== All small image mean & std =============\n"
+  #   msg += f"Normal mean: {score_unsup['all']['n'].mean()}\n"
+  #   msg += f"Normal std: {score_unsup['all']['n'].std()}\n"
+  #   msg += f"Smura mean: {score_unsup['all']['s'].mean()}\n"
+  #   msg += f"Smura std: {score_unsup['all']['s'].std()}\n"
+  #   msg += f"=============== Anomaly max prediction =================\n"    
+  #   msg += unsup_calc_metric(true_label, all_max_anomaly_score, path, f"{name}_max")
+  #   msg += f"=============== Anomaly mean prediction ================\n"
+  #   msg += unsup_calc_metric(true_label, all_mean_anomaly_score, path, f"{name}_mean")
+  #   msg += f"=============== Anomaly max & mean prediction ==========\n"
+  #   msg += unsup_find_param_max_mean(true_label, all_max_anomaly_score, all_mean_anomaly_score, path, f"{name}_max_mean")
+    
+  #   log_file.write(msg) 
+
+  log_name = os.path.join(path, 'res_log.txt')
   msg = ''
   with open(log_name, "w") as log_file:
     msg += f"=============== All small image mean & std =============\n"
@@ -117,14 +139,8 @@ def show_and_save_result(score_unsup, minmax, path, name):
     msg += f"Normal std: {score_unsup['all']['n'].std()}\n"
     msg += f"Smura mean: {score_unsup['all']['s'].mean()}\n"
     msg += f"Smura std: {score_unsup['all']['s'].std()}\n"
-    msg += f"=============== Anomaly max prediction =================\n"    
-    msg += unsup_calc_metric(true_label, all_max_anomaly_score, path, f"{name}_max")
-    msg += f"=============== Anomaly mean prediction ================\n"
-    msg += unsup_calc_metric(true_label, all_mean_anomaly_score, path, f"{name}_mean")
-    msg += f"=============== Anomaly max & mean prediction ==========\n"
-    msg += unsup_find_param_max_mean(true_label, all_max_anomaly_score, all_mean_anomaly_score, path, f"{name}_max_mean")
     
-    log_file.write(msg)  
+    log_file.write(msg) 
 
 def unsupervised_model_prediction(config):
   res_unsup = defaultdict(dict)
@@ -143,9 +159,11 @@ def unsupervised_model_prediction(config):
   else:
     n_pos_mean = n_pos_std = []
 
-  dataset_type_list = [config['data_loader']['test_data_root_normal'], config['data_loader']['test_data_root_smura']]
-  for idx, data_path in enumerate(dataset_type_list):
+    dataset_type_list = [[config['data_loader']['test_data_root_normal'], config['data_loader']['test_normal_num']], [config['data_loader']['test_data_root_smura'],config['data_loader']['test_smura_num']]]
+  
+  for idx, (data_path, data_num) in enumerate(dataset_type_list):
     config['data_loader']['test_data_root'] = data_path
+    config['data_loader']['test_num'] = data_num
     print(f"Now path: {data_path}")
 
     tester = Tester(config)
@@ -234,7 +252,7 @@ if __name__ == '__main__':
       res_unsup = unsupervised_model_prediction(config)
       
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
-    show_and_save_result(res_unsup, config['minmax'], config['result_path'], result_name)
+    show_and_save_result(res_unsup, config['result_path'], result_name)
 
     if not config['using_record']:
       export_score(res_unsup, config['result_path'])

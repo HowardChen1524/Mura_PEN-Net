@@ -101,11 +101,20 @@ def export_conf_score(conf_sup, score_unsup, path):
   df_sup.to_csv(os.path.join(path, 'sup_conf.csv'), index=False)
 
   unsup_name = score_unsup['fn']['n'] + score_unsup['fn']['s']
-  unsup_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
   unsup_label = [0]*score_unsup['mean']['n'].shape[0]+[1]*score_unsup['mean']['s'].shape[0]
-  df_unsup = pd.DataFrame(list(zip(unsup_name,unsup_score,unsup_label)), columns=['name', 'score', 'label'])
-  df_unsup.to_csv(os.path.join(path, 'unsup_score.csv'), index=False)
-  
+
+  unsup_score_max = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
+  df_unsup_max = pd.DataFrame(list(zip(unsup_name,unsup_score_max,unsup_label)), columns=['name', 'score_max', 'label'])
+  df_unsup_max.to_csv(os.path.join(path, 'unsup_score_max.csv'), index=False)
+
+  unsup_score_mean = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
+  df_unsup_mean = pd.DataFrame(list(zip(unsup_name,unsup_score_mean,unsup_label)), columns=['name', 'score_mean', 'label'])
+  df_unsup_mean.to_csv(os.path.join(path, 'unsup_score_mean.csv'), index=False)
+
+  unsup_score_all = np.concatenate([score_unsup['all']['n'], score_unsup['all']['s']])
+  unsup_label_all = [0]*score_unsup['all']['n'].shape[0]+[1]*score_unsup['all']['s'].shape[0]
+  df_unsup_all = pd.DataFrame(list(zip(unsup_score_all,unsup_label_all)), columns=['score', 'label'])
+  df_unsup_all.to_csv(os.path.join(path, 'unsup_score_all.csv'), index=False)
   print("save conf score finished!")
 
 def supervised_model_prediction(config, gpu):

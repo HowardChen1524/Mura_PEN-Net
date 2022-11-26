@@ -27,6 +27,8 @@ from core.loss import AdversarialLoss, PerceptualLoss, StyleLoss, VGG19
 from core import metric as module_metric
 import cv2
 from PIL import Image, ImageDraw
+from core.utils_howard import tensor2img, enhance_img
+from piqa import SSIM
 
 class Tester():
   def __init__(self, config):
@@ -55,6 +57,9 @@ class Tester():
         os.makedirs(self.inpainting_path, exist_ok=True)
         self.draw_path = os.path.join(self.config['result_path'], 'true_pred_postion')
         os.makedirs(self.draw_path, exist_ok=True)
+    else:
+      self.inpainting_path = os.path.join(self.config['result_path'], 'check_inpaint')
+      os.makedirs(self.inpainting_path, exist_ok=True)
 
     # Model    
     net = importlib.import_module('model.'+config['model_name']) # 根據不同項目的配置，動態導入對應的模型
@@ -65,6 +70,7 @@ class Tester():
     # anomaly score
     self.l1_loss = nn.L1Loss()
     self.l2_loss = nn.MSELoss()
+    self.SSIM_loss = set_device(SSIM())
 
   # load netG and netD
   def load(self):
@@ -124,6 +130,24 @@ class Tester():
           crop_scores.append(self.l1_loss(mask_imgs[i], mask_re_imgs[i]).detach().cpu().numpy())
       crop_scores = np.array(crop_scores)
       return crop_scores   
+
+    elif anomaly_score == 'SSIM':
+      crop_scores = []
+      for i in range(0,225):
+          crop_scores.append(self.SSIM_loss(torch.unsqueeze(imgs[i],0), torch.unsqueeze(re_imgs[i], 0)).detach().cpu().numpy())
+      crop_scores = np.array(crop_scores)
+      return crop_scores
+
+    elif anomaly_score == 'Mask_SSIM':
+      mask_imgs = imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
+           int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
+      mask_re_imgs = re_imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
+           int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
+      crop_scores = []
+      for i in range(0,225):
+          crop_scores.append(self.SSIM_loss(torch.unsqueeze(mask_imgs[i],0), torch.unsqueeze(mask_re_imgs[i], 0)).detach().cpu().numpy())
+      crop_scores = np.array(crop_scores)
+      return crop_scores
 
     elif anomaly_score == 'Discriminator': 
       ori_feat = self.netD(imgs)
@@ -204,8 +228,10 @@ class Tester():
     big_imgs_fn = []
     # iteration through datasets
     for idx, (images, masks, names) in enumerate(self.test_loader):
+      if idx >= self.config['data_loader']['test_num']:
+        break
       print('[{}] {}/{}: {}'.format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        idx, len(self.test_loader), names[0]))
+        idx+1, self.config['data_loader']['test_num'], names[0]))
       big_imgs_fn.append(names[0])
       # delete first dim
       bs, ncrops, c, h, w = images.size()
@@ -217,10 +243,16 @@ class Tester():
       images_masked = images*(1-masks) + masks # 中心變白的
       with torch.no_grad():
         feats, output = self.netG(torch.cat((images_masked, masks), dim=1), masks)
-      
+      # print(len(feats))
+      # for f in feats:
+      #   print(f.shape)
+      # print(output.shape)
+      # raise
+      self.export_inpaint_imgs(images, names[0], self.inpainting_path, 0) # 0 true, 1 fake
+      self.export_inpaint_imgs(output, names[0], self.inpainting_path, 1) # 0 true, 1 fake
       # compute loss
       imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
-
+      
       # 如果是正常測試且需要做 normalized 才跑
       if self.config['pos_normalized'] and self.config['test_type'] == "normal": 
         if len(n_mean) == 0 or len(n_std) == 0:
@@ -342,3 +374,20 @@ class Tester():
     n_pos_std = np.std(n_all_crop_scores, axis=0)
 
     return n_pos_mean, n_pos_std
+
+  def export_inpaint_imgs(self, output, name, path, img_type):
+    save_path = os.path.join(path, name)
+    os.makedirs(save_path, exist_ok=True)
+    
+    if img_type == 0:
+      save_path =  os.path.join(save_path, 'real')
+      os.makedirs(save_path, exist_ok=True)
+    else:
+      save_path =  os.path.join(save_path, 'fake')
+      os.makedirs(save_path, exist_ok=True)
+
+    for idx, img in enumerate(output):
+      pil_img = tensor2img(img) 
+      pil_img.save(os.path.join(save_path,f"{idx}.png"))
+      pil_img_en = enhance_img(pil_img)
+      pil_img_en.save(os.path.join(save_path,f"en_{idx}.png"))

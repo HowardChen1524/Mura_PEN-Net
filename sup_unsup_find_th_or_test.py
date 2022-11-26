@@ -16,7 +16,7 @@ from core.utils_howard import mkdir, minmax_scaling, \
                               get_data_info, make_test_dataloader, evaluate, get_line_threshold, \
                               plot_score_distribution, plot_sup_unsup_scatter, plot_line_on_scatter, \
                               sup_unsup_prediction_spec_th, sup_unsup_prediction_spec_multi_th, \
-                              sup_unsup_prediction_auto_th, sup_unsup_prediction_auto_multi_th, sup_unsup_svm, \
+                              sup_unsup_prediction_auto_th, sup_unsup_prediction_auto_multi_th, sup_unsup_SVM, sup_unsup_DT, sup_unsup_SVM_test, sup_unsup_DT_test, \
                               sup_prediction_spec_th, get_value_threshold, find_sup_th, sup_unsup_prediction_spec_th_manual
 
 args = get_test_parser()
@@ -101,99 +101,93 @@ def count_data_version(large_smura_name, small_smura_name, csv_path):
     df_merge_small = df_data.merge(df_small_name, left_on='name', right_on='name')
     print(df_merge_small['batch'].value_counts())
 
-def show_and_save_result(conf_sup, score_unsup, minmax, use_th, path, name):
+def show_and_save_result(conf_sup, score_unsup, use_th, path, name):
     all_conf_sup = np.concatenate([conf_sup['conf']['n'], conf_sup['conf']['s']])
     all_score_unsup = np.concatenate([score_unsup['score']['n'], score_unsup['score']['s']])
 
-    true_label = np.concatenate([conf_sup['labels']['n'], conf_sup['labels']['s']])
-
-    # plot_score_distribution(score_unsup['score']['n'], score_unsup['score']['s'], path, f"{name}_unsup_no_minmax")
-    
-    unsup_n_mean = np.mean(score_unsup['score']['n'])
-    unsup_n_std = np.std(score_unsup['score']['n'])
-    unsup_s_mean = np.mean(score_unsup['score']['s'])
-    unsup_s_std = np.std(score_unsup['score']['s'])
-
-    # if minmax:
-    #     all_score_unsup = minmax_scaling(all_score_unsup)
-    #     score_unsup['score']['n'] =  all_score_unsup[:len(score_unsup['score']['n'])]
-    #     score_unsup['score']['s'] =  all_score_unsup[len(score_unsup['score']['n']):]
+    true_label = np.concatenate([conf_sup['label']['n'], conf_sup['label']['s']])
 
     plot_score_distribution(score_unsup['score']['n'], score_unsup['score']['s'], path, f"{name}_unsup")
     plot_sup_unsup_scatter(conf_sup, score_unsup, path, name)
 
     if use_th:
-        # ===== blind test =====
-        value_th = get_value_threshold(path)
-        one_line_th, two_line_th = get_line_threshold(path)
-        spec_line_th = {"m":32000, "b":2.365}
+        sup_unsup_SVM_test(true_label, all_conf_sup, all_score_unsup, path)
+        sup_unsup_DT_test(true_label, all_conf_sup, all_score_unsup, path)
+        
+        # # ===== blind test =====
+        # value_th = get_value_threshold(path)
+        # one_line_th, two_line_th = get_line_threshold(path)
+        # spec_line_th = {"m":32000, "b":2.365}
 
-        log_name = os.path.join(path, f'{result_name}_blind_test_result_log.txt')
-        msg = ''
-        with open(log_name, "w") as log_file:
-            msg += f"=============== supervised ===================\n"
-            msg += sup_prediction_spec_th(true_label, all_conf_sup, value_th, path)
-            msg += f"=============== unsupervised ===================\n"
-            msg += f"normal mean: {unsup_n_mean}\n"
-            msg += f"normal std: {unsup_n_std}\n"
-            msg += f"smura mean: {unsup_s_mean}\n"
-            msg += f"smura std: {unsup_s_std}\n"
-            msg += f"=============== Combine both one line ===================\n"
-            msg += sup_unsup_prediction_spec_th(true_label, all_conf_sup, all_score_unsup, one_line_th, path)
-            msg += f"=============== Combine both two lines ===================\n"
-            msg += sup_unsup_prediction_spec_multi_th(true_label, all_conf_sup, all_score_unsup, two_line_th, path)
-            msg += f"=============== Manual both one lines ===================\n"
-            msg += sup_unsup_prediction_spec_th_manual(true_label, all_conf_sup, all_score_unsup, spec_line_th, path)
-            log_file.write(msg)
+        # log_name = os.path.join(path, f'{result_name}_blind_test_result_log.txt')
+        # msg = ''
+        # with open(log_name, "w") as log_file:
+        #     msg += f"=============== supervised ===================\n"
+        #     msg += sup_prediction_spec_th(true_label, all_conf_sup, value_th, path)
+        #     msg += f"=============== unsupervised ===================\n"
+        #     msg += f"Normal mean: {score_unsup['all']['n'].mean()}\n"
+        #     msg += f"Normal std: {score_unsup['all']['n'].std()}\n"
+        #     msg += f"Smura mean: {score_unsup['all']['s'].mean()}\n"
+        #     msg += f"Smura std: {score_unsup['all']['s'].std()}\n"
+        #     msg += f"=============== Combine both one line ===================\n"
+        #     msg += sup_unsup_prediction_spec_th(true_label, all_conf_sup, all_score_unsup, one_line_th, path)
+        #     msg += f"=============== Combine both two lines ===================\n"
+        #     msg += sup_unsup_prediction_spec_multi_th(true_label, all_conf_sup, all_score_unsup, two_line_th, path)
+        #     msg += f"=============== Manual both one lines ===================\n"
+        #     msg += sup_unsup_prediction_spec_th_manual(true_label, all_conf_sup, all_score_unsup, spec_line_th, path)
+        #     log_file.write(msg)
     else:
-        sup_res = find_sup_th(conf_sup, path)
-        # ===== Auto find threshold line =====
-        one_res, one_line_time = sup_unsup_prediction_auto_th(true_label, all_conf_sup, all_score_unsup, path)
-        two_res, two_line_time = sup_unsup_prediction_auto_multi_th(true_label, all_conf_sup, all_score_unsup, path)
-        sup_unsup_svm(true_label, all_conf_sup, all_score_unsup, path)
-        log_name = os.path.join(path, f'{result_name}_find_th_log.txt')
-        msg = ''
-        with open(log_name, "w") as log_file:
-            msg += f"=============== supervised ===================\n"
-            msg += f"tnr0.987 recall: {sup_res['tnr0.987_recall']}\n"
-            msg += f"tnr0.987 precision: {sup_res['tnr0.987_precision']}\n"
-            msg += f"tnr0.996 recall: {sup_res['tnr0.996_recall']}\n"
-            msg += f"tnr0.996 precision: {sup_res['tnr0.996_precision']}\n"
-            msg += f"tnr0.998 recall: {sup_res['tnr0.998_recall']}\n"
-            msg += f"tnr0.998 precision: {sup_res['tnr0.998_precision']}\n"
-            msg += f"=============== one line ===================\n"
-            msg += f"one line time: {one_line_time}\n"
-            msg += f"tnr0.987 recall: {one_res['tnr0.987_recall']}\n"
-            msg += f"tnr0.987 precision: {one_res['tnr0.987_precision']}\n"
-            msg += f"tnr0.996 recall: {one_res['tnr0.996_recall']}\n"
-            msg += f"tnr0.996 precision: {one_res['tnr0.996_precision']}\n"
-            msg += f"tnr0.998 recall: {one_res['tnr0.998_recall']}\n"
-            msg += f"tnr0.998 precision: {one_res['tnr0.998_precision']}\n"
-            msg += f"=============== two line ===================\n"
-            msg += f"two line time: {two_line_time}\n"
-            msg += f"tnr0.987 recall: {two_res['tnr0.987_recall']}\n"
-            msg += f"tnr0.987 precision: {two_res['tnr0.987_precision']}\n"
-            msg += f"tnr0.996 recall: {two_res['tnr0.996_recall']}\n"
-            msg += f"tnr0.996 precision: {two_res['tnr0.996_precision']}\n"
-            msg += f"tnr0.998 recall: {two_res['tnr0.998_recall']}\n"
-            msg += f"tnr0.998 precision: {two_res['tnr0.998_precision']}\n"
-            log_file.write(msg)
+        sup_unsup_SVM(true_label, all_conf_sup, all_score_unsup, path)
+        # sup_unsup_DT(true_label, all_conf_sup, all_score_unsup, path)
 
-    plot_line_on_scatter(conf_sup, score_unsup, path)
+    #     sup_res = find_sup_th(conf_sup, path)
+    #     # ===== Auto find threshold line =====
+    #     one_res, one_line_time = sup_unsup_prediction_auto_th(true_label, all_conf_sup, all_score_unsup, path)
+    #     two_res, two_line_time = sup_unsup_prediction_auto_multi_th(true_label, all_conf_sup, all_score_unsup, path)
+    #     sup_unsup_svm(true_label, all_conf_sup, all_score_unsup, path)
+    #     log_name = os.path.join(path, f'{result_name}_find_th_log.txt')
+    #     msg = ''
+    #     with open(log_name, "w") as log_file:
+    #         msg += f"=============== supervised ===================\n"
+    #         msg += f"tnr0.987 recall: {sup_res['tnr0.987_recall']}\n"
+    #         msg += f"tnr0.987 precision: {sup_res['tnr0.987_precision']}\n"
+    #         msg += f"tnr0.996 recall: {sup_res['tnr0.996_recall']}\n"
+    #         msg += f"tnr0.996 precision: {sup_res['tnr0.996_precision']}\n"
+    #         msg += f"tnr0.998 recall: {sup_res['tnr0.998_recall']}\n"
+    #         msg += f"tnr0.998 precision: {sup_res['tnr0.998_precision']}\n"
+    #         msg += f"=============== one line ===================\n"
+    #         msg += f"one line time: {one_line_time}\n"
+    #         msg += f"tnr0.987 recall: {one_res['tnr0.987_recall']}\n"
+    #         msg += f"tnr0.987 precision: {one_res['tnr0.987_precision']}\n"
+    #         msg += f"tnr0.996 recall: {one_res['tnr0.996_recall']}\n"
+    #         msg += f"tnr0.996 precision: {one_res['tnr0.996_precision']}\n"
+    #         msg += f"tnr0.998 recall: {one_res['tnr0.998_recall']}\n"
+    #         msg += f"tnr0.998 precision: {one_res['tnr0.998_precision']}\n"
+    #         msg += f"=============== two line ===================\n"
+    #         msg += f"two line time: {two_line_time}\n"
+    #         msg += f"tnr0.987 recall: {two_res['tnr0.987_recall']}\n"
+    #         msg += f"tnr0.987 precision: {two_res['tnr0.987_precision']}\n"
+    #         msg += f"tnr0.996 recall: {two_res['tnr0.996_recall']}\n"
+    #         msg += f"tnr0.996 precision: {two_res['tnr0.996_precision']}\n"
+    #         msg += f"tnr0.998 recall: {two_res['tnr0.998_recall']}\n"
+    #         msg += f"tnr0.998 precision: {two_res['tnr0.998_precision']}\n"
+    #         log_file.write(msg)
+
+    # plot_line_on_scatter(conf_sup, score_unsup, path)
 
 def model_prediction_using_record(config):
     res_sup = defaultdict(dict)
-    for l in ['conf','labels','files']:
+    for l in ['conf','label','files']:
         for t in ['n','s']:
             res_sup[l][t] = None
 
     res_unsup = defaultdict(dict)
-    for l in ['score','labels','files']:
+    for l in ['score','label','files', 'all']:
         for t in ['n','s']:
             res_unsup[l][t] = None
 
     sup_df = pd.read_csv(os.path.join(config['result_path'], 'sup_conf.csv'))
-    unsup_df = pd.read_csv(os.path.join(config['result_path'], 'unsup_score.csv'))
+    unsup_df = pd.read_csv(os.path.join(config['result_path'], 'unsup_score_mean.csv'))
     merge_df = sup_df.merge(unsup_df, left_on='name', right_on='name')
     
     normal_filter = (merge_df['label_x']==0) & (merge_df['label_y']==0)
@@ -201,17 +195,22 @@ def model_prediction_using_record(config):
     print(merge_df)
     
     # res_sup = defaultdict(dict)
-    for l, c in zip(['conf','labels','files'],['conf','label_x','name']):
+    for l, c in zip(['conf','label','files'],['conf','label_x','name']):
         for t, f in zip(['n', 's'],[normal_filter,smura_filter]):
-            res_sup[l][t] = merge_df[c][f].tolist()
-    print(res_sup['files']['n'][:10])
+            res_sup[l][t] = np.array(merge_df[c][f].tolist())
+    # print(res_sup['files']['n'][:10])
 
     # res_unsup = defaultdict(dict)
-    for l, c in zip(['score','labels','files'],['score','label_y','name']):
+    for l, c in zip(['score','label','files'],['score_mean','label_y','name']):
         for t, f in zip(['n', 's'],[normal_filter, smura_filter]):
-            res_unsup[l][t] = merge_df[c][f].tolist()
-    print(res_unsup['files']['n'][:10])
+            res_unsup[l][t] = np.array(merge_df[c][f].tolist())
+    # print(res_unsup['files']['n'][:10])
     
+    all_df = pd.read_csv(os.path.join(config['result_path'], 'unsup_score_all.csv'))
+    normal_filter = (all_df['label']==0)
+    smura_filter = (all_df['label']==1)
+    res_unsup['all']['n'] = np.array(all_df['score'][normal_filter].tolist())
+    res_unsup['all']['s'] = np.array(all_df['score'][smura_filter].tolist())
     
     return res_sup, res_unsup
 
@@ -223,5 +222,5 @@ if __name__ == '__main__':
     res_sup, res_unsup = model_prediction_using_record(config)
 
     result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}_with_seresnext101"
-    show_and_save_result(res_sup, res_unsup, config['minmax'], config['using_threshold'], config['result_path'], result_name)
+    show_and_save_result(res_sup, res_unsup, config['using_threshold'], config['result_path'], result_name)
     

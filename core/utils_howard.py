@@ -15,14 +15,17 @@ from torch.utils.data import DataLoader
 import torchvision
 import tensorflow as tf
 import tensorflow_addons as tfa
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 import matplotlib.pyplot as plt
 from sklearn import metrics
 from sklearn.metrics import f1_score, roc_curve, auc, confusion_matrix
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
+from sklearn.tree import DecisionTreeClassifier, plot_tree, export_text
+from joblib import dump, load
 
+from sklearn.utils.class_weight import compute_class_weight
 # ***** convenient func *********************************************
 def mkdirs(paths):
     if isinstance(paths, list) and not isinstance(paths, str):
@@ -35,10 +38,19 @@ def mkdir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-def minmax_scaling(scores):
-    scaler = MinMaxScaler(feature_range=(0, 1)).fit(scores.reshape(-1, 1))
-    minmax_scores = scaler.transform(scores.reshape(-1, 1)).reshape(-1,)
-    return minmax_scores
+def tensor2img(input_image):
+    if isinstance(input_image, torch.Tensor): 
+        image_tensor = input_image.detach().cpu()
+    else:
+        raise
+    transform = transforms.Compose([transforms.ToPILImage()])
+    image = transform((image_tensor+1) / 2.0)
+    return image
+
+def enhance_img(img,factor=5):
+  enh_con = ImageEnhance.Contrast(img)
+  new_img = enh_con.enhance(factor=factor)
+  return new_img
 
 # ***** origin supervised func **************************************************
 class wei_augumentation(object):
@@ -576,41 +588,172 @@ def sup_unsup_prediction_auto_multi_th(labels, all_conf_sup, all_score_unsup, pa
     res = save_curve_and_report(all_pr_res, path, False)
     return res, total_time
 
-def sup_unsup_svm(true_label, all_conf_sup, all_score_unsup, path):
-    X = list(zip(all_score_unsup, all_conf_sup))
+def plot_svc_decision_boundary(svm_clf, xmin, xmax):
+    w = svm_clf.coef_[0]
+    b = svm_clf.intercept_[0]
+
+    # At the decision boundary, w0*x0 + w1*x1 + b = 0
+    # => x1 = -w0/w1 * x0 - b/w1
+    x0 = np.linspace(xmin, xmax, 200)
+    decision_boundary = -w[0]/w[1] * x0 - b/w[1]
+
+    margin = 1/w[1]
+    gutter_up = decision_boundary + margin
+    gutter_down = decision_boundary - margin
+
+    plt.plot(x0, decision_boundary, "k-", linewidth=2, label="SVM")
+    plt.plot(x0, gutter_up, "k--", linewidth=2)
+    plt.plot(x0, gutter_down, "k--", linewidth=2)
+
+def sup_unsup_SVM(true_label, all_conf_sup, all_score_unsup, path):
+    X = np.array(list(zip(all_score_unsup, all_conf_sup)))
     y = true_label
-
-    svm = LinearSVC(random_state=0)
-    svm.fit(X,y)
-    # print(svm.coef_)
-    # print(svm.intercept_)
-    m = -(svm.coef_[0][0]/svm.coef_[0][1])
-    b = -(svm.intercept_[0]/svm.coef_[0][1])
-    # print(m)
-    # print(b)
-    # print(f"y = {m}x + {b}")
-    # y = -0.9397935634917242x + 0.7620793414417739
-    # 0, 0.7620793414417739
-    # 0.8109007882649589, 0
-    y_pred = svm.predict(X)
-
-    tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
-    tnr = tn / (tn + fp)
-    precision = tp / (tp + fp)
-    recall = tp / (tp + fn)
-    f1 = 2 * (precision * recall) / (precision + recall)
-    fpr = fp / (fp + tn)
+    print(X.shape)
+    print(y.shape)
     
-    log_name = os.path.join(path, 'svm_report.txt')
-    msg = ''
-    with open(log_name, "w") as log_file:
-        msg += f"y = {m}x + {b}\n"
-        msg += f"TNR: {tnr}\n"
-        msg += f"PPV: {precision}\n"
-        msg += f"TPR: {recall}\n"
-        msg += f"F1: {f1}\n"
-        msg += f"FPR: {fpr}\n"
-        log_file.write(msg)
+    save_dir = os.path.join(path,f'SVM_manual')
+    mkdir(save_dir)
+
+    for kernel in ['linear', 'rbf', 'poly']:
+        svm_clf = SVC(kernel=kernel, class_weight={0:4,1:1}).fit(X, y)
+        dump(svm_clf, f"{os.path.join(save_dir, f'SVM_{kernel}.joblib')}") 
+        # predict
+        y_pred = svm_clf.predict(X)
+        tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
+        tnr = tn / (tn + fp)
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        f1 = 2 * (precision * recall) / (precision + recall)
+        fpr = fp / (fp + tn)
+        
+        log_name = os.path.join(save_dir, f'SVM_{kernel}_report.txt')
+        msg = ''
+        with open(log_name, "w") as log_file:
+            msg += f"Confusion Matrix:\n{confusion_matrix(y_true=y, y_pred=y_pred)}\n"
+            # msg += f"y = {-w[0]/w[1]}x + {-b/w[1]}\n"
+            msg += f"TNR: {tnr}\n"
+            msg += f"PPV: {precision}\n"
+            msg += f"TPR: {recall}\n"
+            msg += f"F1: {f1}\n"
+            msg += f"FPR: {fpr}\n"
+            log_file.write(msg)
+    
+    # draw
+    # plt.clf()
+    # plt.xlim(3e-05, 7e-05)
+    # plot_svc_decision_boundary(svm_clf, 3e-05, 7e-05)
+    # plt.scatter(all_score_unsup[:541], all_conf_sup[:541], s=5, alpha=0.2, color='blue', label='normal')
+    # plt.scatter(all_score_unsup[541:], all_conf_sup[541:], s=5, alpha=0.2, color='red', label='smura')
+    # plt.xlabel('score')
+    # plt.ylabel('conf')
+    # plt.legend(loc='lower right')
+    # plt.savefig(f"{os.path.join(path, 'SVM.png')}")
+    # plt.clf()
+
+def sup_unsup_SVM_test(true_label, all_conf_sup, all_score_unsup, path):
+    X = np.array(list(zip(all_score_unsup, all_conf_sup)))
+    y = true_label
+    print(X.shape)
+    print(y.shape)
+    
+    save_dir = os.path.join(path,f'SVM')
+    mkdir(save_dir)
+
+    for kernel in ['linear', 'rbf', 'poly']:
+        svm_clf = load(f"{os.path.join(save_dir, f'SVM_{kernel}.joblib')}")
+
+        # predict
+        y_pred = svm_clf.predict(X)
+        tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
+        tnr = tn / (tn + fp)
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        f1 = 2 * (precision * recall) / (precision + recall)
+        fpr = fp / (fp + tn)
+        
+        log_name = os.path.join(save_dir, f'SVM_{kernel}_test_report.txt')
+        msg = ''
+        with open(log_name, "w") as log_file:
+            msg += f"Confusion Matrix:\n{confusion_matrix(y_true=y, y_pred=y_pred)}\n"
+            # msg += f"y = {-w[0]/w[1]}x + {-b/w[1]}\n"
+            msg += f"TNR: {tnr}\n"
+            msg += f"PPV: {precision}\n"
+            msg += f"TPR: {recall}\n"
+            msg += f"F1: {f1}\n"
+            msg += f"FPR: {fpr}\n"
+            log_file.write(msg)
+
+
+def sup_unsup_DT(true_label, all_conf_sup, all_score_unsup, path):
+    X = np.array(list(zip(all_score_unsup, all_conf_sup)))
+    y = true_label
+    print(X.shape)
+    print(y.shape)
+    
+    save_dir = os.path.join(path,'DT_manual3')
+    mkdir(save_dir)
+    
+    for dep in range(1, 16):
+        dt_clf = DecisionTreeClassifier(criterion='entropy', max_depth=dep, class_weight={0:4, 1:1}, random_state=0).fit(X, y)
+        dump(dt_clf, f"{os.path.join(save_dir, f'DT_depth_{dep}.joblib')}") 
+
+        plot_tree(dt_clf, feature_names=["score", "conf"], precision=7)
+        plt.title("Decision tree trained on all features")
+        plt.savefig(f"{os.path.join(save_dir, f'DT_depth_{dep}.png')}", dpi=1000)
+        plt.clf()
+
+        y_pred = dt_clf.predict(X)
+        tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
+        tnr = tn / (tn + fp)
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        f1 = 2 * (precision * recall) / (precision + recall)
+        fpr = fp / (fp + tn)
+        
+        log_name = os.path.join(save_dir, f'DT_depth_{dep}_report.txt')
+        msg = ''
+        with open(log_name, "w") as log_file:
+            # msg += f"y = {m}x + {b}\n"
+            msg += f"Confusion Matrix:\n{confusion_matrix(y_true=y, y_pred=y_pred)}\n"
+            msg += f"TNR: {tnr}\n"
+            msg += f"PPV: {precision}\n"
+            msg += f"TPR: {recall}\n"
+            msg += f"F1: {f1}\n"
+            msg += f"FPR: {fpr}\n"
+            msg += f"{export_text(dt_clf, feature_names=['score', 'conf'], decimals=7)}"
+            log_file.write(msg)
+
+def sup_unsup_DT_test(true_label, all_conf_sup, all_score_unsup, path):
+    X = np.array(list(zip(all_score_unsup, all_conf_sup)))
+    y = true_label
+    print(X.shape)
+    print(y.shape)
+    
+    save_dir = os.path.join(path,'DT_manual3')
+    mkdir(save_dir)
+    
+    for dep in range(1, 16):
+        dt_clf = load(f"{os.path.join(save_dir, f'DT_depth_{dep}.joblib')}") 
+
+        y_pred = dt_clf.predict(X)
+        tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
+        tnr = tn / (tn + fp)
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        f1 = 2 * (precision * recall) / (precision + recall)
+        fpr = fp / (fp + tn)
+        
+        log_name = os.path.join(save_dir, f'DT_depth_{dep}_test_report.txt')
+        msg = ''
+        with open(log_name, "w") as log_file:
+            # msg += f"y = {m}x + {b}\n"
+            msg += f"Confusion Matrix:\n{confusion_matrix(y_true=y, y_pred=y_pred)}\n"
+            msg += f"TNR: {tnr}\n"
+            msg += f"PPV: {precision}\n"
+            msg += f"TPR: {recall}\n"
+            msg += f"F1: {f1}\n"
+            msg += f"FPR: {fpr}\n"
+            log_file.write(msg)
 
 def get_line_threshold(path):
     one_line_df = pd.read_csv(os.path.join(path, 'model_report.csv'))
