@@ -42,10 +42,10 @@ def initail_setting(with_sup_model=False):
     config['data_loader']['data_root'] = args.dataset_path
 
   if args.normal_num is not None:
-    config['data_loader']['normal_num'] = args.normal_num
+    config['data_loader']['test_normal_num'] = args.normal_num
 
-  if args.normal_num is not None:
-    config['data_loader']['smura_num'] = args.smura_num
+  if args.smura_num is not None:
+    config['data_loader']['test_smura_num'] = args.smura_num
 
   # ===== model setting =====
   config['model_name'] = args.model_name
@@ -135,6 +135,7 @@ def supervised_model_prediction(config, gpu):
         nn.Linear(2048, 1),
         nn.Sigmoid()
     )
+  print(config['supervised']['model_path'])
   model_sup.load_state_dict(torch.load(config['supervised']['model_path'], map_location=torch.device(f"cuda:{gpu}")))  
   
   return evaluate(model_sup, dataloaders, config['result_path']) 
@@ -146,7 +147,7 @@ def unsupervised_model_prediction(config):
       res_unsup[l][t] = None
 
   if config['pos_normalized']:
-    for idx, data_path in enumerate([config['data_loader']['test_data_root_normal']]):
+    for idx, (data_path, data_num) in enumerate([config['data_loader']['test_data_root_normal'], config['data_loader']['test_normal_num']]):
       config['data_loader']['test_data_root'] = data_path
       print("Start to compute normal mean and std")
       print(f"Now path: {data_path}")
@@ -156,13 +157,14 @@ def unsupervised_model_prediction(config):
   else:
     n_pos_mean = n_pos_std = []
 
-  dataset_type_list = [config['data_loader']['test_data_root_normal'], config['data_loader']['test_data_root_smura']]
-  for idx, data_path in enumerate(dataset_type_list):
+  dataset_type_list = [[config['data_loader']['test_data_root_normal'], config['data_loader']['test_normal_num']], [config['data_loader']['test_data_root_smura'],config['data_loader']['test_smura_num']]]
+  for idx, (data_path, data_num) in enumerate(dataset_type_list):
+    config['data_loader']['test_num'] = data_num
     config['data_loader']['test_data_root'] = data_path
     print(f"Now path: {data_path}")
 
     tester = Tester(config)
-    big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, big_imgs_fn = tester.test(n_pos_mean, n_pos_std) 
+    big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, big_imgs_fn = tester.test(n_pos_mean, n_pos_std, False) 
     
     if idx == 0: # normal
       res_unsup['all']['n'] = big_imgs_scores.copy() # all 小圖

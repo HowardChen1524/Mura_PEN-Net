@@ -201,4 +201,5 @@ class AI9_Dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         img = Image.open(self.X[idx])
+        
         return self.transform(img), self.Y[idx], self.N[idx]

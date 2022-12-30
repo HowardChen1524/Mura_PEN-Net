@@ -5,6 +5,7 @@ from tqdm import tqdm
 import time
 
 import torch
+from torch import nn
 import numpy as np
 import pandas as pd
 
@@ -26,6 +27,7 @@ from sklearn.tree import DecisionTreeClassifier, plot_tree, export_text
 from joblib import dump, load
 
 from sklearn.utils.class_weight import compute_class_weight
+from torch.nn.functional import softmax
 # ***** convenient func *********************************************
 def mkdirs(paths):
     if isinstance(paths, list) and not isinstance(paths, str):
@@ -223,11 +225,10 @@ def calc_matrix(labels_res, preds_res):
     
 def get_data_info(t, l, image_info, data_dir, csv_path):
     res = []
-    image_info = image_info[(image_info["train_type"] == t) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850QVN03")]
+    # image_info = image_info[(image_info["train_type"] == t) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850QVN03")]
     # image_info = image_info[(image_info["train_type"] == t) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850MVR05")]
-    # image_info = image_info[(image_info["batch"] >= 24) & (image_info["batch"] <= 25) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850MVR05")]
-
-    for path, img, label, JND, t in zip(image_info["path"],image_info["name"],image_info["label"],image_info["MULTI_JND"],image_info["train_type"]):
+    image_info = image_info[(image_info["batch"] >= 24) & (image_info["batch"] <= 25) & (image_info["label"] == l) & (image_info["PRODUCT_CODE"] == "T850MVR05")]
+    for path, img, label, JND in zip(image_info["path"],image_info["name"],image_info["label"],image_info["MULTI_JND"]):
         img_path = os.path.join(os.path.join(data_dir), path, img)
         res.append([img_path, label, JND, t, img])
     X = []
@@ -266,7 +267,7 @@ def evaluate(model, testloaders, save_path):
           labels = labels.cpu()
           
           names = list(names)
-
+          
           if idx == 0:
             res['files_res']['n'].extend(names)
             res['preds_res']['n'].extend(preds)
@@ -289,7 +290,7 @@ def find_sup_th(res, save_path):
     # model_pred_result = predict_report(res['preds_res']['all'], res['labels_res']['all'], res['files_res']['all'])
     # model_pred_result.to_csv(os.path.join(save_path, "sup_model_pred_result.csv"), index=None)
     # print("model predict record finished!")
-    all_label = res['labels']['n'] + res['labels']['s']
+    all_label = res['label']['n'] + res['label']['s']
     all_conf = res['conf']['n'] + res['conf']['s']
     res, model_report, curve_df = calc_matrix(all_label, all_conf)
     model_report.to_csv(os.path.join(save_path, "sup_model_report.csv"))
@@ -591,19 +592,15 @@ def sup_unsup_prediction_auto_multi_th(labels, all_conf_sup, all_score_unsup, pa
 def plot_svc_decision_boundary(svm_clf, xmin, xmax):
     w = svm_clf.coef_[0]
     b = svm_clf.intercept_[0]
-
+    m = -w[0]/w[1]
+    intercept = - b/w[1]
     # At the decision boundary, w0*x0 + w1*x1 + b = 0
     # => x1 = -w0/w1 * x0 - b/w1
     x0 = np.linspace(xmin, xmax, 200)
-    decision_boundary = -w[0]/w[1] * x0 - b/w[1]
-
-    margin = 1/w[1]
-    gutter_up = decision_boundary + margin
-    gutter_down = decision_boundary - margin
-
+    decision_boundary = m * x0 + intercept 
+    print(m)
+    print(intercept)
     plt.plot(x0, decision_boundary, "k-", linewidth=2, label="SVM")
-    plt.plot(x0, gutter_up, "k--", linewidth=2)
-    plt.plot(x0, gutter_down, "k--", linewidth=2)
 
 def sup_unsup_SVM(true_label, all_conf_sup, all_score_unsup, path):
     X = np.array(list(zip(all_score_unsup, all_conf_sup)))
@@ -656,12 +653,69 @@ def sup_unsup_SVM_test(true_label, all_conf_sup, all_score_unsup, path):
     print(X.shape)
     print(y.shape)
     
-    save_dir = os.path.join(path,f'SVM')
+    save_dir = os.path.join(path,f'SVM_manual')
     mkdir(save_dir)
 
-    for kernel in ['linear', 'rbf', 'poly']:
-        svm_clf = load(f"{os.path.join(save_dir, f'SVM_{kernel}.joblib')}")
 
+    print(__doc__)
+
+    h = .02  # step size in the mesh
+
+    # we create an instance of SVM and fit out data. We do not scale our
+    # data since we want to plot the support vectors
+    # C = 1.0  # SVM regularization parameter
+    # svc = svm.SVC(kernel='linear', C=C).fit(X, y)
+    # rbf_svc = svm.SVC(kernel='rbf', gamma=0.7, C=C).fit(X, y)
+    # poly_svc = svm.SVC(kernel='poly', degree=3, C=C).fit(X, y)
+    # lin_svc = svm.LinearSVC(C=C).fit(X, y)
+
+    # create a mesh to plot in
+    x_min, x_max = all_score_unsup.min() - 1, all_score_unsup.max() + 1
+    y_min, y_max = all_conf_sup.min() - 1, all_conf_sup.max() + 1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
+                        np.arange(y_min, y_max, h))
+    print(xx.shape)
+    print(yy.shape)
+    
+    # title for the plots
+    titles = ['SVC with linear kernel',
+            'LinearSVC (linear kernel)',
+            'SVC with RBF kernel',
+            'SVC with polynomial (degree 3) kernel']
+
+    for i, kernel in enumerate(['linear', 'rbf', 'poly']):
+        svm_clf = load(f"{os.path.join(save_dir, f'SVM_{kernel}.joblib')}")
+        
+        Z = svm_clf.predict(np.c_[xx.ravel(), yy.ravel()])
+
+        # Put the result into a color plot
+        Z = Z.reshape(xx.shape)
+        plt.contourf(xx, yy, Z, cmap=plt.cm.coolwarm, alpha=0.3)
+        
+        # Plot also the training points
+        plt.scatter(all_score_unsup[:88], all_conf_sup[:88], s=5, alpha=0.2, color='blue', label='normal')
+        plt.scatter(all_score_unsup[88:], all_conf_sup[88:], s=5, alpha=0.2, color='red', label='smura')
+        plt.xlabel('Sepal length')
+        plt.ylabel('Sepal width')
+        plt.xlim(3e-05, 7e-05)
+        plt.ylim(-0.1, 1.1)
+
+        plt.title(titles[i])
+
+        plt.savefig(f"{os.path.join(path, f'SVM_{kernel}_decision_boundary.png')}")
+        
+
+        # if kernel == 'linear':
+        #     plt.clf()
+        #     plt.xlim(3e-05, 7e-05)
+        #     plot_svc_decision_boundary(svm_clf, 3e-05, 7e-05)
+        #     plt.scatter(all_score_unsup[:88], all_conf_sup[:88], s=5, alpha=0.2, color='blue', label='normal')
+        #     plt.scatter(all_score_unsup[88:], all_conf_sup[88:], s=5, alpha=0.2, color='red', label='smura')
+        #     plt.xlabel('score')
+        #     plt.ylabel('conf')
+        #     plt.legend(loc='lower right')
+        #     plt.savefig(f"{os.path.join(path, 'SVM.png')}")
+        #     plt.clf()
         # predict
         y_pred = svm_clf.predict(X)
         tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
@@ -670,7 +724,8 @@ def sup_unsup_SVM_test(true_label, all_conf_sup, all_score_unsup, path):
         recall = tp / (tp + fn)
         f1 = 2 * (precision * recall) / (precision + recall)
         fpr = fp / (fp + tn)
-        
+        print(tnr)
+        print(recall)
         log_name = os.path.join(save_dir, f'SVM_{kernel}_test_report.txt')
         msg = ''
         with open(log_name, "w") as log_file:
@@ -682,7 +737,6 @@ def sup_unsup_SVM_test(true_label, all_conf_sup, all_score_unsup, path):
             msg += f"F1: {f1}\n"
             msg += f"FPR: {fpr}\n"
             log_file.write(msg)
-
 
 def sup_unsup_DT(true_label, all_conf_sup, all_score_unsup, path):
     X = np.array(list(zip(all_score_unsup, all_conf_sup)))
@@ -754,6 +808,115 @@ def sup_unsup_DT_test(true_label, all_conf_sup, all_score_unsup, path):
             msg += f"F1: {f1}\n"
             msg += f"FPR: {fpr}\n"
             log_file.write(msg)
+
+class ThreeLayerNN(nn.Module):
+    def __init__(self):
+        super(ThreeLayerNN, self).__init__()
+        self.flatten = nn.Flatten()
+        self.linear_relu_stack = nn.Sequential(
+            nn.Linear(2, 16),
+            nn.ReLU(),
+            nn.Linear(16, 16),
+            nn.ReLU(),
+            nn.Linear(16, 2),
+        )
+
+    def forward(self, x):
+        logits = self.linear_relu_stack(x)
+        print(logits)
+        
+        return logits
+
+def sup_unsup_NN_train(true_label, all_conf_sup, all_score_unsup, path):
+    X = torch.tensor(list(zip(all_score_unsup, all_conf_sup)), dtype=torch.float32)
+    
+    y = torch.tensor(true_label).view(-1,1)
+    print(X.shape)
+    print(y.shape)
+    
+    save_dir = os.path.join(path,f'NN')
+    mkdir(save_dir)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+
+    model = ThreeLayerNN().to(device)
+
+    criteria = nn.BCELoss()
+    opt = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    for epoch in range(20):
+        for xb, yb in zip(X, y):
+            y_predicted = model(xb.to(device)).detach().cpu().numpy()
+            print(type(y_predicted))
+            print(type(yb))
+            loss = criteria(np.argmax(y_predicted), yb)
+
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+        print(f'epoch: {epoch+1}, loss = {loss.item(): .4f}')
+
+    torch.save(model.state_dict(), os.path.join(save_dir, 'model.pt'))
+
+    # predict
+    model.eval()
+    y_pred = model.predict(X.to(device)).detach().cpu().numpy()
+    tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
+    tnr = tn / (tn + fp)
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    f1 = 2 * (precision * recall) / (precision + recall)
+    fpr = fp / (fp + tn)
+    
+    log_name = os.path.join(save_dir, f'NN_report.txt')
+    msg = ''
+    with open(log_name, "w") as log_file:
+        msg += f"Confusion Matrix:\n{confusion_matrix(y_true=y, y_pred=y_pred)}\n"
+        # msg += f"y = {-w[0]/w[1]}x + {-b/w[1]}\n"
+        msg += f"TNR: {tnr}\n"
+        msg += f"PPV: {precision}\n"
+        msg += f"TPR: {recall}\n"
+        msg += f"F1: {f1}\n"
+        msg += f"FPR: {fpr}\n"
+        log_file.write(msg)
+
+def sup_unsup_NN_test(true_label, all_conf_sup, all_score_unsup, path):
+    X = torch.tensor(list(zip(all_score_unsup, all_conf_sup)))
+    print(type(X))
+    raise
+    y = true_label
+    print(X.shape)
+    print(y.shape)
+    
+    save_dir = os.path.join(path,f'NN')
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+
+    model = ThreeLayerNN()
+    model = torch.load(os.path.join(save_dir, 'model.pt'), map_location = device)
+    model.eval()
+
+    y_pred = model.predict(X.to(device)).detach().cpu().numpy()
+    tn, fp, fn, tp = confusion_matrix(y_true=y, y_pred=y_pred).ravel()
+    tnr = tn / (tn + fp)
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    f1 = 2 * (precision * recall) / (precision + recall)
+    fpr = fp / (fp + tn)
+    
+    log_name = os.path.join(save_dir, f'NN_test_report.txt')
+    msg = ''
+    with open(log_name, "w") as log_file:
+        msg += f"Confusion Matrix:\n{confusion_matrix(y_true=y, y_pred=y_pred)}\n"
+        # msg += f"y = {-w[0]/w[1]}x + {-b/w[1]}\n"
+        msg += f"TNR: {tnr}\n"
+        msg += f"PPV: {precision}\n"
+        msg += f"TPR: {recall}\n"
+        msg += f"F1: {f1}\n"
+        msg += f"FPR: {fpr}\n"
+        log_file.write(msg)
 
 def get_line_threshold(path):
     one_line_df = pd.read_csv(os.path.join(path, 'model_report.csv'))
@@ -864,10 +1027,10 @@ def save_curve_and_report(all_pr_res, path, isOneline=True):
     tnr996_best_recall_pos = curve_df[(curve_df['tnr'] > 0.996) & (curve_df['tnr'] < 0.997)].recall.argmax()
     tnr998_best_recall_pos = curve_df[(curve_df['tnr'] > 0.998) & (curve_df['tnr'] < 0.999)].recall.argmax()
 
-    print(curve_df.head(10))
-    print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].head())
-    print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].recall.argmax())
-    print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos].x)
+    # print(curve_df.head(10))
+    # print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].head())
+    # print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].recall.argmax())
+    # print(curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos].x)
 
     if not isOneline:
         results['tnr0.987_x'].append((curve_df[(curve_df['tnr'] > 0.987) & (curve_df['tnr'] < 0.988)].iloc[tnr987_best_recall_pos]).x)
@@ -952,8 +1115,8 @@ def plot_scatter(conf_sup, score_unsup):
     s_x = score_unsup['score']['s']
     s_y = conf_sup['conf']['s']
     plt.clf()
-    # plt.xlim(3e-05, 1.2e-04)
-    plt.xlim(3e-05, 7e-05)
+    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -1049,7 +1212,7 @@ def plot_roc_curve(roc_auc, fpr, tpr, path, name):
 
 def plot_score_distribution(n_scores, s_scores, path, name):
     plt.clf()
-    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 1.2e-04)
     plt.hist(n_scores, bins=50, alpha=0.5, density=True, label="normal")
     plt.hist(s_scores, bins=50, alpha=0.5, density=True, label="smura")
     plt.xlabel('Anomaly Score')
@@ -1068,7 +1231,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     # 設定座標軸
     # normal
     plt.clf()
-    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -1078,7 +1241,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     plt.clf()
     # smura
     plt.clf()
-    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -1088,7 +1251,7 @@ def plot_score_scatter(n_max, s_max, n_mean, s_mean, path, name):
     plt.clf()
     # all
     plt.clf()
-    # plt.xlim(3e-05, 1.2e-04)
+    plt.xlim(3e-05, 1.2e-04)
     plt.xlabel("max")
     plt.ylabel("mean")
     plt.title('scatter')
@@ -1110,8 +1273,8 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     # 設定座標軸
     # normal
     plt.clf()
-    # plt.xlim(3e-05, 1.2e-04)
-    plt.xlim(3e-05, 7e-05)
+    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -1119,8 +1282,8 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     plt.savefig(f"{path}/{name}_normal_scatter.png")
     plt.clf()
     # smura
-    # plt.xlim(3e-05, 1.2e-04)
-    plt.xlim(3e-05, 7e-05)
+    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')
@@ -1128,8 +1291,8 @@ def plot_sup_unsup_scatter(conf_sup, score_unsup, path, name):
     plt.savefig(f"{path}/{name}_smura_scatter.png")
     plt.clf()
     # Both
-    # plt.xlim(3e-05, 1.2e-04)
-    plt.xlim(3e-05, 7e-05)
+    plt.xlim(3e-05, 1.2e-04)
+    # plt.xlim(3e-05, 7e-05)
     plt.xlabel("score (Unsupervised)")
     plt.ylabel("Conf (Supervised)")
     plt.title('scatter')

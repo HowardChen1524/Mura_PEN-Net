@@ -3,6 +3,11 @@ import pandas as pd
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
+# df = pd.read_csv('/home/ldap/sallylin/Howard/Mura_PEN-Net/release_model/pennet_d23_8k_square512/temp/mura_d24_d25_8k_results_00100_Mask_MSE_with_sup/unsup_score.csv')
+# normal_filter = df.label == 0
+# outlier_filter = df.score > 7e-05
+# print(df[normal_filter & outlier_filter])
+
 # d23_sup_path = r'./d23/sup_conf.csv'
 # d23_unsup_path = r'./d23/unsup_score.csv'
 

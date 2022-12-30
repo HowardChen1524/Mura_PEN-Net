@@ -60,8 +60,7 @@ def initail_setting(with_sup_model=False):
   if args.csv_path is not None:
     config['data_loader']['csv_path'] = args.csv_path
 
-  config['save_dir'] = os.path.join(config['save_dir'], '{}_{}_{}{}'.format(config['model_name'], 
-    config['model']['version'], config['data_loader']['mask'], config['data_loader']['w']))
+  config['save_dir'] = os.path.join(config['save_dir'], '{}'.format(config['model']['version']))
 
   if with_sup_model:
     if config['pos_normalized']:
@@ -72,7 +71,7 @@ def initail_setting(with_sup_model=False):
     if config['pos_normalized']:
       result_path = os.path.join(config['save_dir'], '{}_results_{}_{}_pn'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
     else:
-      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
+      result_path = os.path.join(config['save_dir'], '{}/{}'.format(config['data_loader']['name'], config['anomaly_score']))
   mkdir(result_path)
   
   config['result_path'] = result_path
@@ -107,14 +106,31 @@ def export_score(score_unsup, path):
   print("save conf score finished!")
 
 def show_and_save_result(score_unsup, path, name):
-  # all_max_anomaly_score = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
-  # all_mean_anomaly_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
-  # true_label = [0]*len(score_unsup['mean']['n'])+[1]*len(score_unsup['mean']['s'])
+  all_max_anomaly_score = np.concatenate([score_unsup['max']['n'], score_unsup['max']['s']])
+  all_mean_anomaly_score = np.concatenate([score_unsup['mean']['n'], score_unsup['mean']['s']])
+  true_label = [0]*len(score_unsup['mean']['n'])+[1]*len(score_unsup['mean']['s'])
 
-  # plot_score_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
-  # plot_score_scatter(score_unsup['max']['n'], score_unsup['max']['s'], score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
+  plot_score_distribution(score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
+  plot_score_scatter(score_unsup['max']['n'], score_unsup['max']['s'], score_unsup['mean']['n'], score_unsup['mean']['s'], path, name)
   
-  # log_name = os.path.join(path, 'result_log.txt')
+  log_name = os.path.join(path, 'result_log.txt')
+  msg = ''
+  with open(log_name, "w") as log_file:
+    msg += f"=============== All small image mean & std =============\n"
+    msg += f"Normal mean: {np.array(score_unsup['all']['n']).mean()}\n"
+    msg += f"Normal std: {np.array(score_unsup['all']['n']).std()}\n"
+    msg += f"Smura mean: {np.array(score_unsup['all']['s']).mean()}\n"
+    msg += f"Smura std: {np.array(score_unsup['all']['s']).std()}\n"
+    msg += f"=============== Anomaly max prediction =================\n"    
+    msg += unsup_calc_metric(true_label, all_max_anomaly_score, path, f"{name}_max")
+    msg += f"=============== Anomaly mean prediction ================\n"
+    msg += unsup_calc_metric(true_label, all_mean_anomaly_score, path, f"{name}_mean")
+    msg += f"=============== Anomaly max & mean prediction ==========\n"
+    msg += unsup_find_param_max_mean(true_label, all_max_anomaly_score, all_mean_anomaly_score, path, f"{name}_max_mean")
+    
+    log_file.write(msg) 
+
+  # log_name = os.path.join(path, 'res_log.txt')
   # msg = ''
   # with open(log_name, "w") as log_file:
   #   msg += f"=============== All small image mean & std =============\n"
@@ -122,25 +138,8 @@ def show_and_save_result(score_unsup, path, name):
   #   msg += f"Normal std: {score_unsup['all']['n'].std()}\n"
   #   msg += f"Smura mean: {score_unsup['all']['s'].mean()}\n"
   #   msg += f"Smura std: {score_unsup['all']['s'].std()}\n"
-  #   msg += f"=============== Anomaly max prediction =================\n"    
-  #   msg += unsup_calc_metric(true_label, all_max_anomaly_score, path, f"{name}_max")
-  #   msg += f"=============== Anomaly mean prediction ================\n"
-  #   msg += unsup_calc_metric(true_label, all_mean_anomaly_score, path, f"{name}_mean")
-  #   msg += f"=============== Anomaly max & mean prediction ==========\n"
-  #   msg += unsup_find_param_max_mean(true_label, all_max_anomaly_score, all_mean_anomaly_score, path, f"{name}_max_mean")
     
   #   log_file.write(msg) 
-
-  log_name = os.path.join(path, 'res_log.txt')
-  msg = ''
-  with open(log_name, "w") as log_file:
-    msg += f"=============== All small image mean & std =============\n"
-    msg += f"Normal mean: {score_unsup['all']['n'].mean()}\n"
-    msg += f"Normal std: {score_unsup['all']['n'].std()}\n"
-    msg += f"Smura mean: {score_unsup['all']['s'].mean()}\n"
-    msg += f"Smura std: {score_unsup['all']['s'].std()}\n"
-    
-    log_file.write(msg) 
 
 def unsupervised_model_prediction(config):
   res_unsup = defaultdict(dict)
@@ -167,7 +166,11 @@ def unsupervised_model_prediction(config):
     print(f"Now path: {data_path}")
 
     tester = Tester(config)
-    big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, big_imgs_fn = tester.test(n_pos_mean, n_pos_std) 
+    if idx < 31:
+      export = True
+    else:
+      export = False
+    big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, big_imgs_fn = tester.test(n_pos_mean, n_pos_std, export) 
     
     if idx == 0: # normal
       res_unsup['all']['n'] = big_imgs_scores.copy() # all 小圖

@@ -221,7 +221,7 @@ class Tester():
 
     img.save(os.path.join(self.draw_path, fn))
 
-  def test(self, n_mean, n_std):
+  def test(self, n_mean, n_std, export):
     big_imgs_scores = None
     big_imgs_scores_max = None
     big_imgs_scores_mean = None
@@ -248,8 +248,10 @@ class Tester():
       #   print(f.shape)
       # print(output.shape)
       # raise
-      self.export_inpaint_imgs(images, names[0], self.inpainting_path, 0) # 0 true, 1 fake
-      self.export_inpaint_imgs(output, names[0], self.inpainting_path, 1) # 0 true, 1 fake
+      # if export and names[0] != '6A2D51P21BZZ_20220607093559_0_L050P_resize.png':
+      #   print(names[0])
+      #   self.export_inpaint_imgs(images, names[0], self.inpainting_path, 0) # 0 true, 1 fake
+      #   self.export_inpaint_imgs(output, names[0], self.inpainting_path, 1) # 0 true, 1 fake
       # compute loss
       imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
       
