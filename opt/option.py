@@ -14,6 +14,7 @@ def get_train_parser():
     parser.add_argument("-tp", "--train_path", type=str, default=None)
     parser.add_argument('-cont', '--continue_train', action='store_true')
     # train
+    parser.add_argument("-fsp", "--fix_step", type=int, default=None)
     parser.add_argument("-sf", "--save_freq", type=int, default=None)
     parser.add_argument("-eps", "--epochs", type=int, default=None)
 
@@ -24,7 +25,7 @@ def get_test_parser():
     parser.add_argument("-c", "--config", type=str, required=True)
     parser.add_argument("-gpu", "--gpu_id", type=int, default=0)
     # model
-    parser.add_argument("-mn", "--model_name", type=str, required=True)
+    parser.add_argument("-mn", "--model_name", type=str)
     parser.add_argument("-mv", "--model_version", type=str, required=True)
     parser.add_argument("-m", "--mask", default=None, type=str)
     parser.add_argument("-s", "--size", default=None, type=int)

@@ -22,14 +22,14 @@ from torchvision.utils import make_grid, save_image
 import torch.distributed as dist
 
 from core.dataset import AUO_Dataset
-from core.utils import set_seed, set_device, Progbar, postprocess, tensor2im
+from core.utils import set_seed, set_device, Progbar, postprocess, tensor2im, VGG16FeatureExtractor
 from core.loss import AdversarialLoss, PerceptualLoss, StyleLoss, VGG19
 from core import metric as module_metric
 import cv2
 from PIL import Image, ImageDraw
 from core.utils_howard import tensor2img, enhance_img
 from piqa import SSIM
-
+import pandas as pd
 class Tester():
   def __init__(self, config):
     self.config = config
@@ -71,6 +71,7 @@ class Tester():
     self.l1_loss = nn.L1Loss()
     self.l2_loss = nn.MSELoss()
     self.SSIM_loss = set_device(SSIM())
+    self.vgg16_extractor = set_device(VGG16FeatureExtractor())
 
   # load netG and netD
   def load(self):
@@ -168,7 +169,36 @@ class Tester():
         crop_scores.append(pyramid_loss)
       crop_scores = np.array(crop_scores)
       return crop_scores
+
+    elif anomaly_score == 'Content_VGG16_sliding':
+      crop_scores = []
+      for i in range(0,225):
+          score = 0.0
+          vgg_ft_fakeB = self.vgg16_extractor(torch.unsqueeze(re_imgs[i],0))
+          vgg_ft_realB = self.vgg16_extractor(torch.unsqueeze(imgs[i],0))
+          for j in range(3):
+              score += self.l2_loss(vgg_ft_realB[j], vgg_ft_fakeB[j])
+          crop_scores.append(score.detach().cpu().numpy())
+      crop_scores = np.array(crop_scores)
+      return crop_scores  
     
+    elif anomaly_score == 'Mask_Content_VGG16_sliding':
+      mask_imgs = imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
+           int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
+      mask_re_imgs = re_imgs[:, :, int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2),
+           int(self.crop_size/4):int(self.crop_size/4)+int(self.crop_size/2)]
+
+      crop_scores = []
+      for i in range(0,225):
+          score = 0.0
+          vgg_ft_fakeB = self.vgg16_extractor(torch.unsqueeze(mask_re_imgs,0))
+          vgg_ft_realB = self.vgg16_extractor(torch.unsqueeze(mask_imgs,0))
+          for j in range(3):
+              score += self.l2_loss(vgg_ft_realB[j], vgg_ft_fakeB[j])
+          crop_scores.append(score.detach().cpu().numpy())
+      crop_scores = np.array(crop_scores)
+      return crop_scores
+      
     else:
       raise ValueError("Please choose one measure mode!")
   
@@ -221,7 +251,7 @@ class Tester():
 
     img.save(os.path.join(self.draw_path, fn))
 
-  def test(self, n_mean, n_std, export):
+  def test(self, n_mean, n_std, export=False):
     big_imgs_scores = None
     big_imgs_scores_max = None
     big_imgs_scores_mean = None
@@ -248,13 +278,20 @@ class Tester():
       #   print(f.shape)
       # print(output.shape)
       # raise
-      # if export and names[0] != '6A2D51P21BZZ_20220607093559_0_L050P_resize.png':
-      #   print(names[0])
-      #   self.export_inpaint_imgs(images, names[0], self.inpainting_path, 0) # 0 true, 1 fake
-      #   self.export_inpaint_imgs(output, names[0], self.inpainting_path, 1) # 0 true, 1 fake
+      if export:
+        print(names[0])
+        self.export_inpaint_imgs(images, names[0], self.inpainting_path, 0) # 0 true, 1 fake
+        self.export_inpaint_imgs(output, names[0], self.inpainting_path, 1) # 0 true, 1 fake
       # compute loss
       imgs_scores = self.compute_score(images, feats, output, self.config['anomaly_score'])
-      
+
+      pos_list = [i for i in range(0, 225)]
+      os.makedirs(self.inpainting_path, exist_ok=True)
+      score_df = pd.DataFrame(list(zip(pos_list, imgs_scores)), columns=['pos','score'])
+      # print(os.path.join(self.inpainting_path, 'pos_score.csv'))
+      # raise
+      score_df.to_csv(os.path.join(self.inpainting_path, f'{names[0]}/pos_score.csv'), index=False)
+
       # 如果是正常測試且需要做 normalized 才跑
       if self.config['pos_normalized'] and self.config['test_type'] == "normal": 
         if len(n_mean) == 0 or len(n_std) == 0:

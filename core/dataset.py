@@ -29,39 +29,14 @@ class AUO_Dataset(torch.utils.data.Dataset):
 
     # 依據現在是要train還是test去放不同參數
     if split == 'train':
-      if not data_args['continue']:
-        self.dir = data_args['train_data_root']
-        self.rand_crop_num = data_args['rand_crop_num']
-        self.data = make_dataset(self.dir) # return image path list (image_folder.py)
-        
-        shuffle(self.data)
-        if data_args['train_data_max'] != -1: # -1 表示全部
-          self.data = self.data[:data_args['train_data_max']]
-
-        recover_list = []
-        for i, path in enumerate(self.data):
-            # print(i)
-            recover_list.append(path[len(self.dir)+1:].replace('.png','.bmp'))
-        recover_df = pd.DataFrame(recover_list, columns=['PIC_ID'])
-        recover_df.to_csv('./training_imgs.csv', index=False, columns=['PIC_ID'])
-        print(f"Record {len(self.data)} filename successful!")
-      else:
-        recover_list = []
-        recover_df = pd.read_csv('./training_imgs.csv')
-        data_df = pd.read_csv(data_args['csv_path'])
-        recover_fn = pd.merge(recover_df, data_df, on='PIC_ID', how='inner')['PIC_ID'].tolist()
-        for fn in recover_fn:
-            recover_list.append(f"{self.dir_A}{fn.replace('bmp','png')}")
-        self.data = recover_list
-        print(f"Recover img num: {len(self.data)}")
-
+      self.dir = data_args['train_data_root']
+      self.edge_index_list = [0, 105, 210, 14, 119, 224]
     elif split == 'test':
       self.dir = data_args['test_data_root']
-      self.slid_crop_stride = data_args['slid_crop_stride']
-      self.data = make_dataset(self.dir)
-      # shuffle(self.data)
-      if data_args['test_data_max'] != -1:
-        self.data = self.data[:data_args['test_data_max']]
+
+    self.rand_crop_num = data_args['rand_crop_num']
+    self.slid_crop_stride = data_args['slid_crop_stride']
+    self.data = make_dataset(self.dir) # return image path list (image_folder.py)
 
     self.color = data_args['color'] # RGB or gray
     self.crop_size = data_args['crop_size'] # 小圖尺寸
@@ -75,14 +50,8 @@ class AUO_Dataset(torch.utils.data.Dataset):
     else:
       self.mask = [0]*len(self.data)
     
-    # self.data.sort()
-
   def __len__(self):
     return len(self.data)
-  
-  def set_subset(self, start, end):
-    self.mask = self.mask[start:end]
-    self.data = self.data[start:end] 
 
   def __getitem__(self, index):
     try:
@@ -103,71 +72,35 @@ class AUO_Dataset(torch.utils.data.Dataset):
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))  
     img = img.convert(self.color)
     
-    # do crop prepro
-    # # load mask 
-    # if self.mask_type == 'pconv':
-    #   m_index = random.randint(0, len(self.mask)-1) if self.split == 'train' else index
-    #   mask_path = os.path.dirname(self.mask[m_index]) + '.zip'
-    #   mask_name = os.path.basename(self.mask[m_index])
-    #   mask = ZipReader.imread(mask_path, mask_name).convert('L')
-    # else: # square
-    #   m = np.zeros((self.h, self.w)).astype(np.uint8)
-    #   if self.split == 'train':
-    #     t, l = random.randint(0, self.h//2), random.randint(0, self.w//2)
-    #     m[t:t+self.h//2, l:l+self.w//2] = 255
-    #   else:
-    #     m[self.h//4:self.h*3//4, self.w//4:self.w*3//4] = 255
-    #   mask = Image.fromarray(m).convert('L')
-    
-    # augment 
-    # if self.split == 'train': 
-    #   img = transforms.RandomHorizontalFlip()(img)
-    #   img = transforms.ColorJitter(0.05, 0.05, 0.05, 0.05)(img)
-    #   mask = transforms.RandomHorizontalFlip()(mask)
-    #   mask = mask.rotate(random.randint(0,45), expand=True)
-    #   mask = mask.filter(ImageFilter.MaxFilter(3))
-    # img = img.resize((self.w, self.h))
-    # mask = mask.resize((self.w, self.h), Image.NEAREST)
-    # return F.to_tensor(img)*2-1., F.to_tensor(mask), img_name
-    
     crop_imgs = []
-    if self.split == 'train':
-      img_transform = transforms.Compose([transforms.ToTensor(),
-                                      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                                      transforms.RandomCrop(self.crop_size)])
-      for i in range(self.rand_crop_num):
-          crop_imgs.append(img_transform(img))
-    elif self.split == 'test':
-      img_transform = transforms.Compose([transforms.ToTensor(),
-                                      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-      img_tensor = img_transform(img)
+    
+    img_transform = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    img_tensor = img_transform(img)
 
-      # sliding crop
-      (c, w, h) = img_tensor.size()
-      y_end_crop, x_end_crop = False, False
-      for y in range(0, h, self.slid_crop_stride): # stride default 32
-          # print(f"y {y}")
-          # y_end_crop = False
-          crop_y = y
-          if (y + self.crop_size) > h:
-              # crop_y =  w - self.opt.fineSize
-              # y_end_crop = True
-              break
-          for x in range(0, w, self.slid_crop_stride):
-              # print(f"x {x}")
-              # x_end_crop = False
-              crop_x = x
-              if (x + self.crop_size) > w:
-                  # crop_x = h - self.opt.fineSize
-                  # x_end_crop = True
-                  break
-              crop_img = transforms.functional.crop(img_tensor, crop_y, crop_x, self.crop_size, self.crop_size)
-              crop_imgs.append(crop_img)
-              
-              # if x_end_crop:
-              #    break
-          # if x_end_crop and y_end_crop:
-              # break
+    # sliding crop
+    (c, w, h) = img_tensor.size()
+    y_end_crop, x_end_crop = False, False
+    for y in range(0, h, self.slid_crop_stride): # stride default 32
+      # print(f"y {y}")
+      crop_y = y
+      if (y + self.crop_size) > h:
+        break
+      for x in range(0, w, self.slid_crop_stride):
+        crop_x = x
+        if (x + self.crop_size) > w:
+          break
+        crop_img = transforms.functional.crop(img_tensor, crop_y, crop_x, self.crop_size, self.crop_size)
+        crop_imgs.append(crop_img)
+
+    if self.split == 'train':
+      crop_index_list = []
+      for i in range(0,225):
+        if i not in self.edge_index_list:
+            crop_index_list.append(i)
+      random.shuffle(crop_index_list)
+      crop_index_list = crop_index_list[:self.rand_crop_num-len(self.edge_index_list)] + self.edge_index_list
+      crop_imgs = [crop_imgs[crop_index] for crop_index in crop_index_list]
 
     crop_imgs = torch.stack(crop_imgs)
     crop_num = crop_imgs.shape[0]

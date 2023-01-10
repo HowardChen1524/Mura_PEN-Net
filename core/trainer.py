@@ -24,15 +24,12 @@ class Trainer():
     # setup data set and data loader
     self.train_dataset = AUO_Dataset(config['data_loader'], split='train')
     worker_init_fn = partial(set_seed, base=config['seed']) # 將 set_seed 的 base param 固定為 config['seed']，並命名為 worker_init_fn
-    self.train_sampler = None
     
     self.train_loader = DataLoader(self.train_dataset, 
-                                  # batch_size=config['trainer']['batch_size'] // config['world_size'],
                                   batch_size=config['trainer']['batch_size'],
-                                  shuffle=(self.train_sampler is None), 
+                                  shuffle=True, 
                                   num_workers=config['trainer']['num_workers'],
                                   pin_memory=True, 
-                                  sampler=self.train_sampler, # default None
                                   worker_init_fn=worker_init_fn)
     # set up losses and metrics
     self.adversarial_loss = set_device(AdversarialLoss(type=self.config['losses']['gan_type']))
@@ -147,6 +144,9 @@ class Trainer():
       
       iteration += 1
       self.total_iteration += 1
+      if iteration >= self.config['trainer']['fix_step']:
+        print('Limit Step 5000')
+        break
       # self.adjust_learning_rate()
       end = time.time()
 
@@ -228,7 +228,7 @@ class Trainer():
       progbar.add(1, values=logs if self.train_args['verbosity'] else [x for x in logs if not x[0].startswith('l_')])
 
       # print log each 10 iteration
-      if iteration % 10 == 0:
+      if iteration % 50 == 0:
         message = '('
         for msg in logs:
           message += f"{msg[0]}: {msg[1]}, "
@@ -237,8 +237,8 @@ class Trainer():
             log_file.write('%s\n' % message)
       # saving and evaluating
       # if iteration % (self.one_epoch_iter*self.train_args['save_freq']) == 0:
-      if iteration % 5000 == 0:
-        self.save(int(self.epoch))
+      # if iteration % 5000 == 0:
+      #   self.save(int(self.epoch))
 
     self.schedulerG.step()
     self.schedulerD.step()
@@ -259,9 +259,10 @@ class Trainer():
 
   def train(self):
     while True: # opt.epoch_count default 1
-      self.epoch += 1
-
-      if self.epoch > self.train_args['epochs'] + 1:
+      if self.epoch >= self.train_args['epochs']:
         break
+      self.epoch += 1
       self._train_epoch()
+      if self.epoch % 10 == 0:
+        self.save(int(self.epoch))
     print('\nEnd training....')

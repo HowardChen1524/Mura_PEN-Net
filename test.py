@@ -60,18 +60,12 @@ def initail_setting(with_sup_model=False):
   if args.csv_path is not None:
     config['data_loader']['csv_path'] = args.csv_path
 
-  config['save_dir'] = os.path.join(config['save_dir'], '{}'.format(config['model']['version']))
+  config['save_dir'] = os.path.join(config['save_dir'], f"{config['model']['version']}")
 
-  if with_sup_model:
-    if config['pos_normalized']:
-      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}_with_sup_pn'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
-    else:
-      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}_with_sup'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
+  if config['pos_normalized']:
+    result_path = os.path.join(config['result_dir'], '{}/{}/{}_pn'.format(config['model']['version'], config['data_loader']['name'], config['anomaly_score']))
   else:
-    if config['pos_normalized']:
-      result_path = os.path.join(config['save_dir'], '{}_results_{}_{}_pn'.format(config['data_loader']['name'], str(config['model_epoch']).zfill(5), config['anomaly_score']))
-    else:
-      result_path = os.path.join(config['save_dir'], '{}/{}'.format(config['data_loader']['name'], config['anomaly_score']))
+    result_path = os.path.join(config['result_dir'], '{}/{}/{}'.format(config['model']['version'], config['data_loader']['name'], config['anomaly_score']))
   mkdir(result_path)
   
   config['result_path'] = result_path
@@ -158,7 +152,7 @@ def unsupervised_model_prediction(config):
   else:
     n_pos_mean = n_pos_std = []
 
-    dataset_type_list = [[config['data_loader']['test_data_root_normal'], config['data_loader']['test_normal_num']], [config['data_loader']['test_data_root_smura'],config['data_loader']['test_smura_num']]]
+  dataset_type_list = [[config['data_loader']['test_data_root_normal'], config['data_loader']['test_normal_num']], [config['data_loader']['test_data_root_smura'],config['data_loader']['test_smura_num']]]
   
   for idx, (data_path, data_num) in enumerate(dataset_type_list):
     config['data_loader']['test_data_root'] = data_path
@@ -166,10 +160,8 @@ def unsupervised_model_prediction(config):
     print(f"Now path: {data_path}")
 
     tester = Tester(config)
-    if idx < 31:
-      export = True
-    else:
-      export = False
+    
+    export = True
     big_imgs_scores, big_imgs_scores_max, big_imgs_scores_mean, big_imgs_fn = tester.test(n_pos_mean, n_pos_std, export) 
     
     if idx == 0: # normal
@@ -254,7 +246,7 @@ if __name__ == '__main__':
     else:
       res_unsup = unsupervised_model_prediction(config)
       
-    result_name = f"{config['data_loader']['name']}_crop{config['data_loader']['crop_size']}_{config['anomaly_score']}_epoch{config['model_epoch']}"
+    result_name = f"{config['anomaly_score']}_epoch{config['model_epoch']}"
     show_and_save_result(res_unsup, config['result_path'], result_name)
 
     if not config['using_record']:

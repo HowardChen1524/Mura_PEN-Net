@@ -18,8 +18,7 @@ def main_worker(gpu, config):
   set_seed(config['seed']) # core/utils.py
   
   # create save directory
-  config['save_dir'] = os.path.join(config['save_dir'], '{}_{}_{}{}'.format(config['model_name'], 
-    config['model']['version'], config['data_loader']['mask'], config['data_loader']['w']))
+  config['save_dir'] = os.path.join(config['save_dir'], f"{config['model']['version']}")
   
   os.makedirs(config['save_dir'], exist_ok=True)
   print('[**] create folder {}'.format(config['save_dir']))
@@ -42,19 +41,21 @@ if __name__ == "__main__":
   if args.train_path is not None:
     config['data_loader']['train_data_root'] = args.train_path
 
-  if args.model_version is not None:
-    config['model']['version'] = args.model_version
   if args.model_name is not None:  
     config['model_name'] = args.model_name # pennet
+  if args.model_version is not None:
+    config['model']['version'] = args.model_version
   if args.save_freq is not None:
     config['trainer']['save_freq'] = args.save_freq
   if args.epochs is not None:
     config['trainer']['epochs'] = args.epochs
+  if args.fix_step is not None:
+    config['trainer']['fix_step'] = args.fix_step
 
   if args.continue_train is not None:
     config['data_loader']['continue'] = args.continue_train
 
-  gpu_device = 1
+  gpu_device = 0
  
   # 只使用單 GPU
   main_worker(gpu_device, config) # GPU device, GPU num, config

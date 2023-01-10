@@ -1,16 +1,16 @@
 {
     "seed": 2022,
-    "save_dir": "./release_model/",
+    "save_dir": "./release_model/Unsupervised/",
+    "result_dir": "./exp_result/Unsupervised",
     "type_c_plus_path": "./Mura_type_c_plus.csv",
     "model": {
-        "version": "mura_d23_8k"
+        "version": "PEN-Net_???"
     },
     "data_loader": {
         "name": "mura_d23_8k", 
-        "csv_path": "/hcds_vol/private/howard/mura_data/d23_merge/data_merged.csv",
+        "csv_path": "",
         "data_root": "/hcds_vol/private/howard/mura_data/d23_merge/",
         "train_data_root": "/hcds_vol/private/howard/mura_data/d23_merge/train/normal",
-        "train_data_max": 5000,
         "test_data_root": "",
         "test_data_root_normal": "/hcds_vol/private/howard/mura_data/d23_merge/test/test_normal_8k/",
         "test_data_root_smura": "/hcds_vol/private/howard/mura_data/d23_merge/test/test_smura_8k/",
@@ -37,10 +37,11 @@
         "beta1": 0.5,
         "beta2": 0.999,
         "verbosity": 2,
-        "save_freq": 1,
-        "epochs" : 100,
+        "save_freq": 10,
+        "epochs" : 200,
         "batch_size": 1,
-        "num_workers": 4
+        "num_workers": 4,
+        "fix_step": 5000
     },
     "supervised": {
         "model_path": "./supervised_model/model.pt"
